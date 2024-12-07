@@ -19,6 +19,19 @@ case class Node(id: Int, replicationFactor: Int) {
 
     var network: Network = Network(0) 
 
+    // shared prefix
+    def shl(a: Int, b: Int): Int = {
+        var i = 0
+        var done = false 
+        while(i <= 32 && !done) {
+            if (a >> i == b >> i) 
+                done = true 
+            else 
+                i += 1
+        }
+        32-i
+    }
+
     def getNextHop(key: Int): Int = {
         0
     }
@@ -46,7 +59,7 @@ case class Node(id: Int, replicationFactor: Int) {
                     case Some(value) => Reply(value)
             }
             case Set(key, value) => {
-                
+                set(key, value)
                 Empty()
             }
             case _ => Empty()
