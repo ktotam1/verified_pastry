@@ -1,4 +1,5 @@
 import scala.collection.immutable.HashMap
+import stainless.collection.*
 
 trait Purpose
 case class Get(key: Int) extends Purpose
@@ -16,7 +17,7 @@ case class Node(id: Int, replicationFactor: Int) {
     val routingTable = HashMap[Int, Node]() 
     val leafset = Array.ofDim[Node](replicationFactor)
 
-    var network: Network = Network() 
+    var network: Network = Network(0) 
 
     def getNextHop(key: Int): Int = {
         0
@@ -39,13 +40,22 @@ case class Node(id: Int, replicationFactor: Int) {
 
     def send(msg: Message): Purpose = { 
         msg.purpose match {
-            case Get(x) => Empty()
+            case Get(key) => {
+                get(key) match 
+                    case None => Empty()
+                    case Some(value) => Reply(value)
+            }
+            case Set(key, value) => {
+                
+                Empty()
+            }
+            case _ => Empty()
         }
     }
 }
 
-class Network { 
-    var nodes: List[Node] = List()
+class Network(maxNodes: Int) { 
+    var nodes: Array[Node] = Array.ofDim[Node](maxNodes)
     def add(node: Node) = {
         node.network = this //potential aliasing problem ? 
         nodes = node +: nodes
