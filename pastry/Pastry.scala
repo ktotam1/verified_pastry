@@ -23,12 +23,18 @@ case class Node(id: Int, replicationFactor: Int) {
     }
 
     def get(key: Int): Option[String] = {
-        None
+        if values.contains(key) then
+            values.get(key)
+        else 
+            val nextHop = getNextHop(key)
+            network.send(Message(nextHop, id, Get(key))) match
+                case Reply(value) => Option(value)
+                case _ => None
     }
 
     def set(key: Int, value: String): Unit = {
         val nextHop = getNextHop(key)
-        network.send()
+        network.send(Message(nextHop, id, Set(key, value)))
     }
 
     def send(msg: Message): Purpose = { 
