@@ -1,6 +1,8 @@
+package pastry
 import stainless.collection.*
 import java.util.HashMap
 import stainless.lang.*
+import sorted.*
 
 def abs(x: Int): Int = {
     if x < 0 then -x else x
@@ -41,7 +43,7 @@ case class RoutingTable(id: Int) {
         val l = shl(id, key)
         def foreach(ids: List[Int], ans: Int , key: Int): Int = {
             ids match   
-                case Nil() => key
+                case stainless.collection.Nil() => key
                 case x :: xs =>
                     if (shl(x,key) > ans) then
                         foreach(xs, shl(x,key),x)
@@ -70,7 +72,7 @@ case class RoutingTable(id: Int) {
         val keys = List.fromScala(ids.theMap.keySet.toList)
         def builder(keys: List[Int]): List[Int] = {
             keys match
-                case Nil() => Nil()
+                case stainless.collection.Nil() => stainless.collection.Nil()
                 case x :: xs => ids(x) ++ builder(xs)
         }
         builder(keys)
@@ -79,18 +81,20 @@ case class RoutingTable(id: Int) {
 }
 
 trait Message
-case class Join(id: Int) extends Message
+case class Join(newId: Int) extends Message
 case class Empty() extends Message
-case class Msg(text: String) extends Message
-case class StateRT(rt: RoutingTable) extends Message
+case class Msg(text: String) extends Message //for debugging purposes
+case class requestState(requesterId: Int) extends Message
+case class RoutingTableState(routingTable: RoutingTable) extends Message
+case class LeafSetState(leafSet: List[Int]) extends Message
 case class Error(reason: String) extends Message
 
 
 case class Node(id: Int, replicationFactor: Int) {
     var network = Network()
     val routingTable: RoutingTable = RoutingTable(id)
-    var leftLeafSet: List[Int] = List()
-    var rightLeafSet: List[Int] = List()
+    var leftLeafSet: SortedList = sorted.Nil
+    var rightLeafSet: SortedList = sorted.Nil
     var neighbourhood: List[Int] = List() //incase i need it 
     // val neighbourHood = ?? 
 
@@ -109,18 +113,19 @@ case class Node(id: Int, replicationFactor: Int) {
             true
     }
 
+    //network gives you a message
     def receive(message: Message, key: Int): Unit = {
         if leftLeafSet.head <= key && key <= rightLeafSet.last then
             def min(nodes: List[Int], nmin: Int, vmin: Int): Int = {
                 nodes match 
-                    case Nil() => nmin
+                    case stainless.collection.Nil() => nmin
                     case x :: xs => 
                         if dist(x,key) < vmin then 
                             min(xs, x, dist(x,key))
                         else min(xs, nmin, vmin)
             }
-            val handler = min(leftLeafSet++rightLeafSet, this.id, dist(key, this.id))
-            if handler == id then handleMessage(message) else send(message, key, handler)
+            // val handler = min(leftLeafSet++rightLeafSet, this.id, dist(key, this.id))
+            // if handler == id then handleMessage(message) else send(message, key, handler)
         else 
             if !route(message, key) then 
                 def foreach(nodes: List[Int]): Unit = {
@@ -130,7 +135,7 @@ case class Node(id: Int, replicationFactor: Int) {
                                 send(message, key, x)
                             foreach(xs)
                 }
-                foreach(routingTable.idList() ++ leftLeafSet ++ rightLeafSet)
+                // foreach(routingTable.idList() ++ leftLeafSet ++ rightLeafSet)
     }
 
     //we are definitely handling the message (deliver in Pastry ig)
@@ -141,17 +146,24 @@ case class Node(id: Int, replicationFactor: Int) {
         }
     }
 
-    private def handleJoin(id: Int): Unit = {
-        send(StateRT(this.routingTable), id, id)
+    private def handleJoin(newId: Int): Unit = {
+        send(RoutingTableState(this.routingTable), id, id)
     }
 
-    private def addNeighbor(id: Int): Unit = {
-        if rlt(id, this.id) then 
+    //add
+    // private def addToLeafSet(id: Int): Unit = {
+    //     if rlt(id, this.id) then 
+    //         leftLeafSet.insert(id)
+    //         if leftLeafSet.length > replicationFactor then leftLeafSet.drop(leftLeafSet.length-replicationFactor)
+    //     else 
+    //         rightLeafSet.insert(id)
+    //         if rightLeafSet.length < replicationFactor then rightLeafSet.take(replicationFactor)
+    // }
 
-    }
-    private def removeNeighbor(id: Int): Unit = {
+    //remove a neighbor and search for a new one 
+    // private def removeFromLeafSet(id: Int): Unit = {
         
-    }
+    // }
 }
 
 class Network() { 
@@ -164,7 +176,7 @@ class Network() {
     def send(msg: Message, key: Int, to: Int): Option[Error] = {
         def foreach(nodes: List[Node]): Option[Error] = {
             nodes match 
-                case Nil() => Option(Error(s"Node with ID ${to} not found"))
+                case stainless.collection.Nil() => Option(Error(s"Node with ID ${to} not found"))
                 case x :: xs => 
                     if x.id == to then
                         x.receive(msg, key) 
