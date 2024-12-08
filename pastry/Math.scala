@@ -13,12 +13,29 @@ def dist(x:Int, y:Int): Int = {
     min(abs(x-y), abs(max(x,y)-Int.MaxValue - min(x,y)))
 }
 
-def leftSmaller(x: Int, y: Int, id: Int): Boolean = {
-    dist(y,id) < dist(x,id)
+def stepsLeft(x: Int, y: Int): Int = {
+    if x == y then 0
+    else if x > y then 
+        x - y
+    else 
+        Int.MaxValue - y + x
 }
 
-def rightSmaller(x: Int, y: Int, id: Int): Boolean = { 
-    dist(x,id) < dist(y,id)
+def leftSmaller(x:Int,y:Int, wrt: Int): Boolean = {
+    stepsLeft(x,wrt) > stepsLeft(y,wrt)
+}
+
+def stepsRight(x: Int, y: Int): Int = {
+    if x == y then 0
+    else if x < y then 
+        y - x
+    else 
+        Int.MaxValue - x + y
+}
+
+def rightSmaller(x: Int, y: Int, wrt: Int): Boolean = {
+    stepsRight(x,wrt) < stepsRight(y,wrt)
+
 }
 
 //ring less than 
