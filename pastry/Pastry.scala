@@ -1,43 +1,13 @@
 package pastry
+import pastryMath.*
 import stainless.collection.*
 import java.util.HashMap
 import stainless.lang.*
 import sorted.*
 
-def abs(x: Int): Int = {
-    if x < 0 then -x else x
-}
-def min(x: Int, y: Int): Int = {
-    if x > y then y else x
-}
-def max(x: Int, y: Int): Int = {
-    if x > y then x else y
-}
-def dist(x:Int, y:Int): Int = {
-    min(abs(x-y), abs(max(x,y)-Int.MaxValue - min(x,y)))
-}
-//ring less than 
-def rlt(x: Int,y: Int): Boolean = {
-    if abs(x-y) < abs(max(x,y)-Int.MaxValue - min(x,y)) then 
-        x < y
-    else 
-        x > y
-}   
-
-def shl(a: Int, b: Int): Int = {
-        var i = 0
-        var done = false 
-        while(i <= 32 && !done) {
-            if (a >> i == b >> i) 
-                done = true 
-            else 
-                i += 1
-        }
-        32-i
-}
 
 case class RoutingTable(id: Int) {
-    private var ids: MutableMap[Int, List[Int]] = MutableMap.withDefaultValue(() => List[Int]())
+    val ids: MutableMap[Int, List[Int]] = MutableMap.withDefaultValue(() => List[Int]())
     //returns the KEY with the largest matching prefix. -1 otherwise
     def biggestMatchingPrefix(key: Int): Int = {
         val l = shl(id, key)
@@ -56,15 +26,24 @@ case class RoutingTable(id: Int) {
         ids.update(shl(id, this.id), ids(shl(id,this.id)).withFilter(_ != id))
     }
     def add(id: Int): Unit = {
-        ids.update(shl(id, this.id), id :: ids(shl(id,this.id)))
+        if id != this.id && !ids(shl(id, this.id)).contains(id) then
+            ids.update(shl(id, this.id), id :: ids(shl(id,this.id)))
     }
     def update(other: RoutingTable): Unit = {
         val keys = List.fromScala((ids.theMap.keySet ++ other.ids.theMap.keySet).toList)
         def updater(keys: List[Int]): Unit = {
             keys match 
                 case x :: xs => 
-                    ids.update(x, ids(x) ++ other.ids(x))
+                    def foreach(ids: List[Int]): Unit = {
+                        ids match
+                            case id::rest => 
+                                add(id)
+                                foreach(rest)      
+                            case _ =>
+                    }
+                    foreach(other.ids(x))
                     updater(xs)
+                case _ => 
         }
         updater(keys)
     }
@@ -77,6 +56,7 @@ case class RoutingTable(id: Int) {
         }
         builder(keys)
     }
+
     
 }
 
@@ -93,14 +73,25 @@ case class Error(reason: String) extends Message
 case class Node(id: Int, replicationFactor: Int) {
     var network = Network()
     val routingTable: RoutingTable = RoutingTable(id)
-    var leftLeafSet: SortedList = sorted.Nil
-    var rightLeafSet: SortedList = sorted.Nil
+    var leftLeafSet: LeafSet = sorted.Nil
+    leftLeafSet.isLeft = true
+    leftLeafSet.id = id
+    var rightLeafSet: LeafSet = sorted.Nil
+    rightLeafSet.isLeft = false
+    rightLeafSet.id = id
     var neighbourhood: List[Int] = List() //incase i need it 
-    // val neighbourHood = ?? 
 
     // if you already know who it's going to 
     def send(message: Message, key: Int, to: Int): Unit = {
-        if to == id then handleMessage(message) else network.send(message, key, to)
+        //snoop if message is a join and send them our tables
+        message match
+            case Join(newId) => 
+                handleJoin(newId)
+            case _ =>
+        if to == id then 
+            handleMessage(message) 
+        else 
+            network.send(message, key, to)
     }
 
     //if you need to figure out who its going to 
@@ -115,7 +106,8 @@ case class Node(id: Int, replicationFactor: Int) {
 
     //network gives you a message
     def receive(message: Message, key: Int): Unit = {
-        if leftLeafSet.head <= key && key <= rightLeafSet.last then
+        println1(message.toString())
+        if (leftLeafSet.size()==0 || rightLeafSet.size()==0) || leftLeafSet.head <= key && key <= rightLeafSet.last then
             def min(nodes: List[Int], nmin: Int, vmin: Int): Int = {
                 nodes match 
                     case stainless.collection.Nil() => nmin
@@ -124,8 +116,10 @@ case class Node(id: Int, replicationFactor: Int) {
                             min(xs, x, dist(x,key))
                         else min(xs, nmin, vmin)
             }
-            // val handler = min(leftLeafSet++rightLeafSet, this.id, dist(key, this.id))
-            // if handler == id then handleMessage(message) else send(message, key, handler)
+            val handler = min(leftLeafSet.toList ++ rightLeafSet.toList, this.id, dist(key, this.id))
+            if handler == id then 
+                handleMessage(message) 
+            else send(message, key, handler)
         else 
             if !route(message, key) then 
                 def foreach(nodes: List[Int]): Unit = {
@@ -134,32 +128,66 @@ case class Node(id: Int, replicationFactor: Int) {
                             if shl(x, key) > shl(id, key) && dist(x, key) < dist(id, key) then
                                 send(message, key, x)
                             foreach(xs)
+                        case _ =>
                 }
-                // foreach(routingTable.idList() ++ leftLeafSet ++ rightLeafSet)
+                foreach(routingTable.idList() ++ leftLeafSet.toList ++ rightLeafSet.toList)
     }
 
     //we are definitely handling the message (deliver in Pastry ig)
     private def handleMessage(msg: Message): Unit = {
+        println(s"${id} is handling message ${msg}")
         msg match {
             case Join(id) => handleJoin(id)
             case Error(reason) => println(reason)
+            case RoutingTableState(routingTable) =>
+                this.routingTable.update(routingTable)
+            case LeafSetState(leafSet) => 
+                updateLeafSet(leafSet)
         }
     }
 
+
+
     private def handleJoin(newId: Int): Unit = {
-        send(RoutingTableState(this.routingTable), id, id)
+        routingTable.add(newId)
+        addToLeafSet(newId)
+        send(RoutingTableState(this.routingTable), newId, newId)
+        send(LeafSetState(leftLeafSet.toList++rightLeafSet.toList), newId, newId)   
     }
 
-    //add
-    // private def addToLeafSet(id: Int): Unit = {
-    //     if rlt(id, this.id) then 
-    //         leftLeafSet.insert(id)
-    //         if leftLeafSet.length > replicationFactor then leftLeafSet.drop(leftLeafSet.length-replicationFactor)
-    //     else 
-    //         rightLeafSet.insert(id)
-    //         if rightLeafSet.length < replicationFactor then rightLeafSet.take(replicationFactor)
-    // }
+    private def updateLeafSet(l: List[Int]): Unit = {
+        l match 
+            case x :: xs =>
+                addToLeafSet(x)
+                updateLeafSet(xs)
+            case _ =>
+    }
 
+    private def addToLeafSet(id: Int): Unit = {
+        if id != this.id then
+            leftLeafSet = leftLeafSet.insert(id)
+            if leftLeafSet.size().toInt > replicationFactor then 
+                leftLeafSet = leftLeafSet.drop(leftLeafSet.size().toInt -replicationFactor)
+            rightLeafSet = rightLeafSet.insert(id)
+            if rightLeafSet.size().toInt > replicationFactor then 
+                rightLeafSet = rightLeafSet.take(replicationFactor)
+    }
+
+    def println1(s: String)= {
+        if id == 1 then println(s)
+    }
+
+
+    def mkSting(): String = {
+        s"""
+        ========================================
+        Node: ${id}
+        Left: ${leftLeafSet.toList}
+        Right: ${rightLeafSet.toList}
+        Route: ${routingTable.ids}
+        ========================================
+        """
+    }
     //remove a neighbor and search for a new one 
     // private def removeFromLeafSet(id: Int): Unit = {
         
