@@ -3,6 +3,7 @@ package vp
 import stainless.lang.*
 import stainless.annotation.*
 import stainless.collection.*
+import StainlessConverter.*
 
 /**
     This file contains a decorator for a sorted List[Int], that contains only unique elements (hence, sorted Set)
@@ -191,24 +192,27 @@ sealed abstract class SortedList{
 case object Nil extends SortedList
 case class Cons(x: Int, tail: SortedList) extends SortedList
 
-def isvalidstainless[T](sl:List[T],key:T=>Int): Boolean = {
-    sl match{
-        case stainless.collection.Cons(x, xs) => {
-            xs match
-                case stainless.collection.Cons(xx, xxs) => key(x) < key(xx) && isvalidstainless[T](xs,key)  
-                case stainless.collection.Nil() => true
-        }
-        case stainless.collection.Nil() => true
-    }
-}
 
-def fromStainlessSortedList[T](s: List[T],key:T=>Int): SortedList = {
-    require(isvalidstainless[T](s,key))
-    s match{
-        case stainless.collection.Cons(x, xs) => Cons(key(x),fromStainlessSortedList(xs,key))
-        case stainless.collection.Nil() => Nil
+object StainlessConverter{
+    def isvalidstainless[T](sl:List[T],key:T=>Int): Boolean = {
+        sl match{
+            case stainless.collection.Cons(x, xs) => {
+                xs match
+                    case stainless.collection.Cons(xx, xxs) => key(x) < key(xx) && isvalidstainless[T](xs,key)  
+                    case stainless.collection.Nil() => true
+            }
+            case stainless.collection.Nil() => true
+        }
     }
-}.ensuring((res:SortedList) => res.isValid)
+
+    def fromStainlessSortedList[T](s: List[T],key:T=>Int): SortedList = {
+        require(isvalidstainless[T](s,key))
+        s match{
+            case stainless.collection.Cons(x, xs) => Cons(key(x),fromStainlessSortedList(xs,key))
+            case stainless.collection.Nil() => Nil
+        }
+    }.ensuring((res:SortedList) => res.isValid)
+}
 
 @ghost
 object slProperties{
@@ -349,13 +353,13 @@ object slProperties{
         }
     }.ensuring(sl.forall(elem=>e<elem))
 
-    def zncImplremoveNc(sl: SortedList, e:Int, k:Int): Unit = {
+    def ncImplremoveNc(sl: SortedList, e:Int, k:Int): Unit = {
         require(sl.isValid)
         require(!sl.contains(e))
         require(k!=e)
         sl match{
             case vp.Nil => 
-            case vp.Cons(x, xs) => zncImplremoveNc(xs,e,k)
+            case vp.Cons(x, xs) => ncImplremoveNc(xs,e,k)
         }
     }.ensuring(!sl.remove(k).contains(e))
 }
