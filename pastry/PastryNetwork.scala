@@ -50,10 +50,14 @@ case class PastryNode(id: Int, l: BigInt, state: NodeState, routingTable: Sorted
         require(dropped_node.id != id) // can't drop yourself
         require(dropped_node.state == vp.NodeState.Dead)
         require(replacing_node.state == vp.NodeState.Synched)
+        
+        assert(leafset.size() == l)
+        assert(leafset.contains(dropped_node.id))
+        assert(leafset.isValid)
         val new_ls = leafset.remove(dropped_node.id)
-        assert(new_ls.size() == l-1)
+        assert(new_ls.size() == l-1) // how on earth are you not proving this 
         val nnls = new_ls.insert(replacing_node.id)
-        assert(nnls.size() == l)
+        assert(nnls.size() == l) // or this stainless, howwwwww
         assert(nnls.isValid)
         val newrt = routingTable.merge(replacing_node.routingTable)
         assert(newrt.isValid)
@@ -61,7 +65,9 @@ case class PastryNode(id: Int, l: BigInt, state: NodeState, routingTable: Sorted
         val new_leafset_data = if !take_ownership then leafset_data ++ replacing_node.leafset_data else leafset_data ++ replacing_node.leafset_data -- dropped_node.own_data.toSet
 
         PastryNode(id,l,state,newrt,new_ls,new_data,new_leafset_data)
-    }// .ensuring((ret:PastryNode) => dropped_node.own_data.forall(k=>ret.own_data.contains(k)) && own_data.forall(k=>ret.own_data.contains(k)))
+    }.ensuring((ret:PastryNode) => dropped_node.own_data.forall(k=>ret.own_data.contains(k)) && own_data.forall(k=>ret.own_data.contains(k)))
+      // Might have to rewrite a minimal example of  that poscondition to check whether it can actually be proven with List[Int]
+      // Otherwise can adapt own_data to become a SortedList as well! Could help with the class invariant too
 }
 
 case class PastryNetwork(nodes: List[PastryNode],l: BigInt){
