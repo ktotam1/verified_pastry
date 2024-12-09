@@ -22,7 +22,7 @@ def stepsLeft(x: Int, y: Int): Int = {
 }
 
 def leftSmaller(x:Int,y:Int, wrt: Int): Boolean = {
-    stepsLeft(x,wrt) > stepsLeft(y,wrt)
+    stepsLeft(wrt,x) > stepsLeft(wrt,y)
 }
 
 def stepsRight(x: Int, y: Int): Int = {
@@ -34,7 +34,8 @@ def stepsRight(x: Int, y: Int): Int = {
 }
 
 def rightSmaller(x: Int, y: Int, wrt: Int): Boolean = {
-    stepsRight(x,wrt) < stepsRight(y,wrt)
+    println(s"in right smaller $x < $y wrt $wrt ${stepsRight(x,wrt)} < ${stepsRight(y,wrt)}")
+    stepsRight(wrt,x) < stepsRight(wrt,y)
 
 }
 

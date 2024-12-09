@@ -4,58 +4,61 @@ import stainless.collection.*
 import java.util.HashMap
 import stainless.lang.*
 import sorted.*
+import org.junit.runner.Request
 
 
 
 case class Node(id: Int, replicationFactor: Int) {
     var network = Network()
     val routingTable: RoutingTable = RoutingTable(id)
-    var leftLeafSet: LeafSet = LeafSet(id, true)
-    var rightLeafSet: LeafSet = LeafSet(id, false)
+    val leftLeafSet: LeafSet = LeafSet(id, true)
+    val rightLeafSet: LeafSet = LeafSet(id, false)
     var neighbourhood: List[Int] = List() //incase i need it 
     
-    def snoop(message: Message): Unit = {
+    def snoop(message: Message): Message = {
         message match
-            case Join(newId) => 
+            case Join(newId, list) => 
                 neighbourhood = newId :: neighbourhood
                 //println(s"$id is snooping join of $newId")
-                handleJoin(newId)
-                def foreach(l: List[Int]): Unit = {
-                    l match
-                        case x :: xs => network.send(JoinNotice(newId), newId, x)
-                        case stainless.collection.Nil() => 
-                }
-                foreach((leftLeafSet.toList ++ rightLeafSet.toList).unique)
-            case _ =>
+                addNewId(newId)
+                Join(newId, this.id :: list)
+            case _ => message
     }
     // if you already know who it's going to 
-    def send(message: Message, key: Int, to: Int): Unit = {
+    def forward(message: Message, key: Int, to: Int): Unit = {
         //snoop if message is a join and send them our tables
-        snoop(message)
+        val snooped = snoop(message)
         if to == id then 
             handleMessage(message) 
         else 
-            network.send(message, key, to)
+            network.send(snooped, key, to)
     }
 
     //if you need to figure out who its going to 
     def route(message: Message, key: Int): Boolean = {
-        //println(s"${this.id} routed message")
+        println(s"${this.id} routed message")
         val id = routingTable.biggestMatchingPrefix(key)
         if id == -1 then 
             false 
         else 
-            send(message, key, id) 
+            forward(message, key, id) 
             true
     }
 
+    //sending is actually the same as receiving oops 
+    def send(message: Message, key: Int) = receive(message, key)
+    
     //network gives you a message
     def receive(message: Message, key: Int): Unit = {
-        snoop(message)
-        //println(s"${this.id} is receiving $message")
+        val snooped = snoop(message)
+        println(s"${this.id} is receiving $message with $key")
+        if (leftLeafSet.size()>0 && rightLeafSet.size()>0) then
+            println(s"${leftSmaller(leftLeafSet.head, key, id)} and ${rightSmaller(key, rightLeafSet.last,id)}")
+            // println(s"$key < ${rightLeafSet.last} w.r.t $id")
+            // println(s"${stepsRight(id, key)} ${stepsRight(id, rightLeafSet.last)}")
         if (leftLeafSet.size()==0 || rightLeafSet.size()==0) ||
-         leftSmaller(leftLeafSet.head, key, id) 
-         && rightSmaller(key, rightLeafSet.last,id) then
+         leftSmaller(leftLeafSet.head, key, id) && 
+         rightSmaller(key, rightLeafSet.last,id) then
             def min(nodes: List[Int], nmin: Int, vmin: Int): Int = {
                 nodes match 
                     case stainless.collection.Nil() => nmin
@@ -66,18 +69,18 @@ case class Node(id: Int, replicationFactor: Int) {
             }
             val handler = min(leftLeafSet.toList ++ rightLeafSet.toList, this.id, dist(key, this.id))
             if handler == id then 
-                handleMessage(message) 
+                handleMessage(snooped) 
             else 
-                //println(s"${this.id} is forwarding message to $handler")
-                send(message, key, handler)
+                println(s"${this.id} is forwarding message to $handler")
+                forward(snooped, key, handler)
         else 
             if !route(message, key) then 
-                //println(s"${this.id} failed to route; spamming neighbors")
+                println(s"${this.id} failed to route; spamming neighbors")
                 def foreach(nodes: List[Int]): Unit = {
                     nodes match 
                         case x :: xs =>
                             if shl(x, key) > shl(id, key) && dist(x, key) < dist(id, key) then
-                                send(message, key, x)
+                                forward(snooped, key, x)
                             foreach(xs)
                         case _ =>
                 }
@@ -86,28 +89,51 @@ case class Node(id: Int, replicationFactor: Int) {
 
     //we are definitely handling the message (deliver in Pastry ig)
     private def handleMessage(msg: Message): Unit = {
-        //println(s"${id} is handling message ${msg}")
+        println(s"${id} is handling message ${msg}")
         msg match {
-            case Join(id) => handleJoin(id)
-            case JoinNotice(newId) => handleJoin(id)
-            case Error(reason) => ////println(reason)
+            case Join(newId, ls) => 
+                addNewId(id)
+                network.send(JoinReply(id, ls), newId, newId)
+            case JoinNotice(newId) => addNewId(newId)
+            case JoinReply(newId, path) => 
+                def foreachPath(ids: List[Int]): Unit = {
+                    ids match
+                        case x :: xs => 
+                            network.send(JoinNotice(this.id), x, x)
+                            network.send(RequestState(this.id), x, x)
+                            foreachPath(xs)
+                        case Nil() => 
+                }
+                foreachPath(path)
+                def foreachNotify(ids: List[Int]): Unit = {
+                    ids match
+                        case x :: xs => 
+                            network.send(JoinNotice(this.id),x,x)
+                            foreachNotify(xs)
+                        case Nil() =>
+                }
+                foreachNotify(leftLeafSet.toList ++ rightLeafSet.toList ++ routingTable.idList())
+            case RequestState(requesterId) => 
+                network.send(RoutingTableState(this.routingTable), requesterId, requesterId)
+                network.send(RoutingTableState(this.routingTable), requesterId, requesterId)
+            case Error(reason) => println(reason)
             case RoutingTableState(routingTable) =>
                 this.routingTable.add(routingTable.id)
                 this.routingTable.update(routingTable)
             case LeafSetState(leafSet, id) => 
                 addToLeafSet(id)
                 updateLeafSet(leafSet)
+            case Msg(str, from) => println(s"${from} says ${str} to ${this.id} ")
         }
     }
 
-
-
-    private def handleJoin(newId: Int): Unit = {
+    private def addNewId(newId: Int): Unit = {
+        println(s"${this.id} is adding id ${newId}")
         neighbourhood = newId :: neighbourhood
         routingTable.add(newId)
         addToLeafSet(newId)
-        send(RoutingTableState(this.routingTable), newId, newId)
-        send(LeafSetState(leftLeafSet.toList++rightLeafSet.toList, id), newId, newId)   
+        forward(RoutingTableState(this.routingTable), newId, newId)
+        forward(LeafSetState(leftLeafSet.toList++rightLeafSet.toList, id), newId, newId)   
     }
 
     private def updateLeafSet(l: List[Int]): Unit = {
@@ -120,7 +146,7 @@ case class Node(id: Int, replicationFactor: Int) {
 
     private def addToLeafSet(id: Int): Unit = {
         if id != this.id then
-            if this.id==1 then println(stepsLeft(this.id, id) + " " + stepsRight(this.id, id))
+            // if this.id==1 then println(stepsLeft(this.id, id) + " " + stepsRight(this.id, id))
             if stepsLeft(this.id, id) < stepsRight(this.id, id) then
                 leftLeafSet.insert(id)
                 if leftLeafSet.size().toInt > replicationFactor then 
@@ -133,15 +159,13 @@ case class Node(id: Int, replicationFactor: Int) {
 
 
     def mkSting(): String = {
-        s"""
-        ========================================
+        s"""========================================
         Node: ${id}
         Left: ${leftLeafSet.toList}
         Right: ${rightLeafSet.toList}
         Route: ${routingTable.ids}
         Neigh: ${neighbourhood.unique}
-        ========================================
-        """
+        ========================================"""
     }
     //remove a neighbor and search for a new one 
     // private def removeFromLeafSet(id: Int): Unit = {
