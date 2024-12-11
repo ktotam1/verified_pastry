@@ -1,5 +1,4 @@
 package pastry
-import pastryMath.*
 import stainless.lang.*
 import stainless.annotation.*
 import stainless.collection.*

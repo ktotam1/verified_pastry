@@ -1,4 +1,4 @@
-package pastryMath
+package pastry
 
 def abs(x: Int): Int = {
     if x < 0 then -x else x
@@ -48,13 +48,24 @@ def rlt(x: Int,y: Int): Boolean = {
 }   
 
 def shl(a: Int, b: Int): Int = {
-        var i = 0
-        var done = false 
-        while(i <= 32 && !done) {
-            if (a >> i == b >> i) 
-                done = true 
-            else 
-                i += 1
-        }
-        32-i
+    var i: BigInt = 1
+    var j = 0
+    var done = false
+    while(!done){
+        if a/i == b/i then
+            done = true
+        else 
+            i *= 10
+            j += 1
+    }
+    10-j
+        // var i = 0
+        // var done = false 
+        // while(i <= 32 && !done) {
+        //     if (a >> i == b >> i) 
+        //         done = true 
+        //     else 
+        //         i += 1
+        // }
+        // 32-i
 }

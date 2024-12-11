@@ -1,10 +1,8 @@
 
 package pastry 
-import pastryMath.*
 import stainless.collection.*
 import java.util.HashMap
 import stainless.lang.*
-import sorted.*
 case class RoutingTable(id: Int) {
     val ids: MutableMap[Int, List[Int]] = MutableMap.withDefaultValue(() => List[Int]())
     //returns the KEY with the largest matching prefix. -1 otherwise
@@ -12,7 +10,7 @@ case class RoutingTable(id: Int) {
         val l = shl(id, key)
         def foreach(ids: List[Int], ans: Int , key: Int): Int = {
             ids match   
-                case stainless.collection.Nil() => key
+                case Nil() => key
                 case x :: xs =>
                     if (shl(x,key) > ans) then
                         foreach(xs, shl(x,key),x)

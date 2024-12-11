@@ -1,12 +1,12 @@
 package pastry
-import pastryMath.*
 import stainless.collection.*
-import java.util.HashMap
+// import java.util.HashMap
 import stainless.lang.*
-import sorted.*
-import org.junit.runner.Request
+import stainless.io.StdOut.println
+import stainless.io.State
+import stainless.annotation.ghost
 
-
+implicit val state: State = State(0)
 
 case class Node(id: Int, replicationFactor: Int) {
     var network = Network()
@@ -36,11 +36,11 @@ case class Node(id: Int, replicationFactor: Int) {
 
     //if you need to figure out who its going to 
     def route(message: Message, key: Int): Boolean = {
-        println(s"${this.id} routed message")
         val id = routingTable.biggestMatchingPrefix(key)
         if id == -1 then 
             false 
         else 
+            println(s"${this.id} routed message")
             forward(message, key, id) 
             true
     }
@@ -52,13 +52,10 @@ case class Node(id: Int, replicationFactor: Int) {
     def receive(message: Message, key: Int): Unit = {
         val snooped = snoop(message)
         println(s"${this.id} is receiving $message with $key")
-        if (leftLeafSet.size()>0 && rightLeafSet.size()>0) then
-            println(s"${leftSmaller(leftLeafSet.head, key, id)} and ${rightSmaller(key, rightLeafSet.last,id)}")
-            // println(s"$key < ${rightLeafSet.last} w.r.t $id")
-            // println(s"${stepsRight(id, key)} ${stepsRight(id, rightLeafSet.last)}")
         if (leftLeafSet.size()==0 || rightLeafSet.size()==0) ||
-         leftSmaller(leftLeafSet.head, key, id) && 
-         rightSmaller(key, rightLeafSet.last,id) then
+         leftSmaller(leftLeafSet.head, key, id) || 
+         rightSmaller(key, rightLeafSet.last,id) ||
+         key == id then
             def min(nodes: List[Int], nmin: Int, vmin: Int): Int = {
                 nodes match 
                     case stainless.collection.Nil() => nmin
@@ -146,15 +143,23 @@ case class Node(id: Int, replicationFactor: Int) {
 
     private def addToLeafSet(id: Int): Unit = {
         if id != this.id then
-            // if this.id==1 then println(stepsLeft(this.id, id) + " " + stepsRight(this.id, id))
-            if stepsLeft(this.id, id) < stepsRight(this.id, id) then
-                leftLeafSet.insert(id)
-                if leftLeafSet.size().toInt > replicationFactor then 
-                    leftLeafSet.drop(leftLeafSet.size().toInt -replicationFactor)
-            else 
-                rightLeafSet.insert(id)
-                if rightLeafSet.size().toInt > replicationFactor then 
-                    rightLeafSet.take(replicationFactor)
+            // if leftLeafSet.size() == 0 && rightLeafSet.size() == 0 then 
+            //     if stepsLeft(this.id, id) < stepsRight(this.id, id) then
+            //         leftLeafSet.insert(id)
+            //         if (leftLeafSet.size().toInt > replicationFactor) {
+            //             leftLeafSet.drop(leftLeafSet.size().toInt -replicationFactor)
+            //         }
+            //     else 
+            //         rightLeafSet.insert(id)
+            //         if rightLeafSet.size().toInt > replicationFactor then 
+            //             rightLeafSet.take(replicationFactor)
+            //     else 
+            leftLeafSet.insert(id)
+            if leftLeafSet.size().toInt > replicationFactor then 
+                leftLeafSet.drop(leftLeafSet.size().toInt -replicationFactor)
+            rightLeafSet.insert(id)
+            if rightLeafSet.size().toInt > replicationFactor then 
+                rightLeafSet.take(replicationFactor)
     }
 
 
