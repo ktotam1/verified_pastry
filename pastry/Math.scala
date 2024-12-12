@@ -1,5 +1,5 @@
 package pastry
-
+import stainless.lang.BigInt
 def abs(x: Int): Int = {
     if x < 0 then -x else x
 }
@@ -34,7 +34,6 @@ def stepsRight(x: Int, y: Int): Int = {
 }
 
 def rightSmaller(x: Int, y: Int, wrt: Int): Boolean = {
-    println(s"in right smaller $x < $y wrt $wrt ${stepsRight(x,wrt)} < ${stepsRight(y,wrt)}")
     stepsRight(wrt,x) < stepsRight(wrt,y)
 
 }
@@ -48,11 +47,11 @@ def rlt(x: Int,y: Int): Boolean = {
 }   
 
 def shl(a: Int, b: Int): Int = {
-    var i: BigInt = 1
+    var i: Int = 1
     var j = 0
     var done = false
     while(!done){
-        if a/i == b/i then
+        if j==10 || a/i == b/i then
             done = true
         else 
             i *= 10

@@ -21,7 +21,6 @@ object Test{
                 println(x.mkSting())
                 true
             })
-        print("done")
         node0.send(Msg("hi!", node0.id), 123456800)
         // val node = Node(0,rf)
         // node.forward(Join(node.id, List[Int]()), node.id, node0.id)

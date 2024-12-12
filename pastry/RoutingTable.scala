@@ -1,10 +1,9 @@
 
 package pastry 
 import stainless.collection.*
-import java.util.HashMap
 import stainless.lang.*
-case class RoutingTable(id: Int) {
-    val ids: MutableMap[Int, List[Int]] = MutableMap.withDefaultValue(() => List[Int]())
+case class RoutingTable(id: Int,var ids: Map[Int, List[Int]] = Map()) {
+    //MutableMap.withDefaultValue(() => List[Int]())
     //returns the KEY with the largest matching prefix. -1 otherwise
     def biggestMatchingPrefix(key: Int): Int = {
         val l = shl(id, key)
@@ -20,14 +19,14 @@ case class RoutingTable(id: Int) {
         foreach(ids(l), 0, -1)
     }
     def remove(id: Int): Unit = {
-        ids.update(shl(id, this.id), ids(shl(id,this.id)).withFilter(_ != id))
+        ids = ids.updated(shl(id, this.id), ids(shl(id,this.id)).withFilter(_ != id))
     }
     def add(id: Int): Unit = {
         if id != this.id && !ids(shl(id, this.id)).contains(id) then
-            ids.update(shl(id, this.id), id :: ids(shl(id,this.id)))
+            ids = ids.updated(shl(id, this.id), id :: ids(shl(id,this.id)))
     }
     def update(other: RoutingTable): Unit = {
-        val keys = List.fromScala((ids.theMap.keySet ++ other.ids.theMap.keySet).toList)
+        val keys = ids.keys ++ other.ids.keys
         def updater(keys: List[Int]): Unit = {
             keys match 
                 case x :: xs => 
@@ -44,8 +43,9 @@ case class RoutingTable(id: Int) {
         }
         updater(keys)
     }
+
     def idList(): List[Int] = {
-        val keys = List.fromScala(ids.theMap.keySet.toList)
+        val keys = ids.keys
         def builder(keys: List[Int]): List[Int] = {
             keys match
                 case stainless.collection.Nil() => stainless.collection.Nil()

@@ -22,7 +22,15 @@ case class LeafSet(id: Int, isLeft: Boolean)
             stepsLeft(id,x) > stepsLeft(id,y)
         else 
             stepsRight(id,x) < stepsRight(id,y)
-    def size() : BigInt = cell.v.size
+    def size() : Int = {
+        def counter(list: List[Int]): Int = {
+            list match {
+                case Nil() => 0
+                case x :: xs => 1 + counter(list)
+            }
+        }
+        counter(cell.v)
+    }
 
     def isSorted() : Boolean = {
         def sorted(l: List[Int]): Boolean = {

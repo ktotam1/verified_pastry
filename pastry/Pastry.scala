@@ -1,6 +1,5 @@
 package pastry
 import stainless.collection.*
-// import java.util.HashMap
 import stainless.lang.*
 import stainless.io.StdOut.println
 import stainless.io.State
@@ -8,12 +7,10 @@ import stainless.annotation.ghost
 
 implicit val state: State = State(0)
 
-case class Node(id: Int, replicationFactor: Int) {
-    var network = Network()
+case class Node(id: Int, replicationFactor: Int, var network: Network = Network(), var neighbourhood: List[Int] = List()) {
     val routingTable: RoutingTable = RoutingTable(id)
     val leftLeafSet: LeafSet = LeafSet(id, true)
     val rightLeafSet: LeafSet = LeafSet(id, false)
-    var neighbourhood: List[Int] = List() //incase i need it 
     
     def snoop(message: Message): Message = {
         message match
@@ -40,7 +37,7 @@ case class Node(id: Int, replicationFactor: Int) {
         if id == -1 then 
             false 
         else 
-            println(s"${this.id} routed message")
+            // println(s"${this.id} routed message")
             forward(message, key, id) 
             true
     }
@@ -51,7 +48,7 @@ case class Node(id: Int, replicationFactor: Int) {
     //network gives you a message
     def receive(message: Message, key: Int): Unit = {
         val snooped = snoop(message)
-        println(s"${this.id} is receiving $message with $key")
+        // println(s"${this.id} is receiving $message with $key")
         if (leftLeafSet.size()==0 || rightLeafSet.size()==0) ||
          leftSmaller(leftLeafSet.head, key, id) || 
          rightSmaller(key, rightLeafSet.last,id) ||
@@ -68,11 +65,11 @@ case class Node(id: Int, replicationFactor: Int) {
             if handler == id then 
                 handleMessage(snooped) 
             else 
-                println(s"${this.id} is forwarding message to $handler")
+                // println(s"${this.id} is forwarding message to $handler")
                 forward(snooped, key, handler)
         else 
             if !route(message, key) then 
-                println(s"${this.id} failed to route; spamming neighbors")
+                // println(s"${this.id} failed to route; spamming neighbors")
                 def foreach(nodes: List[Int]): Unit = {
                     nodes match 
                         case x :: xs =>
@@ -86,7 +83,7 @@ case class Node(id: Int, replicationFactor: Int) {
 
     //we are definitely handling the message (deliver in Pastry ig)
     private def handleMessage(msg: Message): Unit = {
-        println(s"${id} is handling message ${msg}")
+        // println(s"${id} is handling message ${msg}")
         msg match {
             case Join(newId, ls) => 
                 addNewId(id)
@@ -120,12 +117,12 @@ case class Node(id: Int, replicationFactor: Int) {
             case LeafSetState(leafSet, id) => 
                 addToLeafSet(id)
                 updateLeafSet(leafSet)
-            case Msg(str, from) => println(s"${from} says ${str} to ${this.id} ")
+            case Msg(str, from) => println(str)
         }
     }
 
     private def addNewId(newId: Int): Unit = {
-        println(s"${this.id} is adding id ${newId}")
+        // println(s"${this.id} is adding id ${newId}")
         neighbourhood = newId :: neighbourhood
         routingTable.add(newId)
         addToLeafSet(newId)
@@ -143,17 +140,7 @@ case class Node(id: Int, replicationFactor: Int) {
 
     private def addToLeafSet(id: Int): Unit = {
         if id != this.id then
-            // if leftLeafSet.size() == 0 && rightLeafSet.size() == 0 then 
-            //     if stepsLeft(this.id, id) < stepsRight(this.id, id) then
-            //         leftLeafSet.insert(id)
-            //         if (leftLeafSet.size().toInt > replicationFactor) {
-            //             leftLeafSet.drop(leftLeafSet.size().toInt -replicationFactor)
-            //         }
-            //     else 
-            //         rightLeafSet.insert(id)
-            //         if rightLeafSet.size().toInt > replicationFactor then 
-            //             rightLeafSet.take(replicationFactor)
-            //     else 
+
             leftLeafSet.insert(id)
             if leftLeafSet.size().toInt > replicationFactor then 
                 leftLeafSet.drop(leftLeafSet.size().toInt -replicationFactor)
@@ -172,30 +159,5 @@ case class Node(id: Int, replicationFactor: Int) {
         Neigh: ${neighbourhood.unique}
         ========================================"""
     }
-    //remove a neighbor and search for a new one 
-    // private def removeFromLeafSet(id: Int): Unit = {
-        
-    // }
 }
 
-class Network() { 
-    var nodes: List[Node] = List()
-    def add(node: Node) = {
-        node.network = this //potential aliasing problem ? 
-        nodes = node :: nodes
-    }
-
-    def send(msg: Message, key: Int, to: Int): Option[Error] = {
-        def foreach(nodes: List[Node]): Option[Error] = {
-            nodes match 
-                case stainless.collection.Nil() => Option(Error(s"Node with ID ${to} not found"))
-                case x :: xs => 
-                    if x.id == to then
-                        x.receive(msg, key) 
-                        None()
-                    else 
-                        foreach(xs)
-        }
-        foreach(nodes)
-    }
-}
