@@ -2,9 +2,20 @@
 package pastry 
 import stainless.collection.*
 import stainless.lang.*
-case class RoutingTable(id: Int,var ids: Map[Int, List[Int]] = Map()) {
+case class RoutingTable(var id: Int=0,var ids: Map[Int, List[Int]] = Map()) {
     //MutableMap.withDefaultValue(() => List[Int]())
     //returns the KEY with the largest matching prefix. -1 otherwise
+    def apply(key: Int): List[Int] = {
+        if ids.contains(key) then
+            ids(key)
+        else
+            List()
+    }
+
+    def setId(i: Int): Unit = {
+        this.id = i
+    }
+
     def biggestMatchingPrefix(key: Int): Int = {
         val l = shl(id, key)
         def foreach(ids: List[Int], ans: Int , key: Int): Int = {
@@ -19,11 +30,15 @@ case class RoutingTable(id: Int,var ids: Map[Int, List[Int]] = Map()) {
         foreach(ids(l), 0, -1)
     }
     def remove(id: Int): Unit = {
-        ids = ids.updated(shl(id, this.id), ids(shl(id,this.id)).withFilter(_ != id))
+        if ids.contains(shl(id, this.id)) then
+            ids = ids.updated(shl(id, this.id), ids(shl(id,this.id)).withFilter(_ != id))
     }
     def add(id: Int): Unit = {
-        if id != this.id && !ids(shl(id, this.id)).contains(id) then
+        if id != this.id && ids.contains(shl(id, this.id)) && !ids(shl(id, this.id)).contains(id) then
             ids = ids.updated(shl(id, this.id), id :: ids(shl(id,this.id)))
+        else 
+            ids = ids.+(shl(id, this.id), List(id))
+
     }
     def update(other: RoutingTable): Unit = {
         val keys = ids.keys ++ other.ids.keys
@@ -37,7 +52,7 @@ case class RoutingTable(id: Int,var ids: Map[Int, List[Int]] = Map()) {
                                 foreach(rest)      
                             case _ =>
                     }
-                    foreach(other.ids(x))
+                    foreach(other(x))
                     updater(xs)
                 case _ => 
         }

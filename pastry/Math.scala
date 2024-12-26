@@ -1,5 +1,9 @@
 package pastry
 import stainless.lang.BigInt
+import stainless.annotation.mutable
+
+// case class Cell[T](var v: )
+
 def abs(x: Int): Int = {
     if x < 0 then -x else x
 }
@@ -45,6 +49,10 @@ def rlt(x: Int,y: Int): Boolean = {
     else 
         x > y
 }   
+
+def freshen[@mutable T](t: T): T ={
+    t
+}
 
 def shl(a: Int, b: Int): Int = {
     var i: Int = 1

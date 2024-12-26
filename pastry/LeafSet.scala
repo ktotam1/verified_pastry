@@ -8,9 +8,12 @@ import stainless.collection.*
     It describes a List that is always sorted in *ascending* order
     (i.e. smallest elements first)
 */
-case class LeafSet(id: Int, isLeft: Boolean)
- {
-    val cell: Cell[stainless.collection.List[Int]] = Cell(List())
+case class LeafSet(isLeft: Boolean, val cell: Cell[stainless.collection.List[Int]] = Cell(List()), var id: Int = 0)
+ {  
+    def setId(i: Int) = {
+        this.id = i
+    }
+
     def lt(x:Int,y:Int) =
         // println(s"""
         // id: ${id}
@@ -26,7 +29,7 @@ case class LeafSet(id: Int, isLeft: Boolean)
         def counter(list: List[Int]): Int = {
             list match {
                 case Nil() => 0
-                case x :: xs => 1 + counter(list)
+                case x :: xs => 1 + counter(xs)
             }
         }
         counter(cell.v)
@@ -77,12 +80,21 @@ case class LeafSet(id: Int, isLeft: Boolean)
     def remove(e: Int) : Unit= {
         this.cell.v = this.cell.v.filter(_ != e)
     }
-
-    def drop(i: BigInt): Unit ={
-        this.cell.v = cell.v.drop(i)
+    def drop(i: Int): Unit = {
+        def dropHelper(ls: List[Int], i: Int): List[Int] ={
+            ls match 
+                case Nil() => Nil()
+                case Cons(x, xs) => if i > 0 then dropHelper(xs, i-1) else Cons(x, xs)
+        }
+        cell.v = dropHelper(cell.v, i)
     }
 
-    def take(i: BigInt): Unit = {
-        this.cell.v = cell.v.take(i)
+    def take(i: Int): Unit = {
+        def takeHelper(ls: List[Int], i: Int): List[Int] = {
+            ls match
+                case Nil() => Nil()
+                case Cons(x, xs) => if i > 0 then Cons(x, takeHelper(xs, i-1)) else Nil()
+        }
+        cell.v = takeHelper(cell.v, i)
     }
 }
