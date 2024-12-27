@@ -3,9 +3,7 @@ package vp
 import stainless.lang.*
 import stainless.annotation.*
 import stainless.collection.*
-import StainlessConverter.*
-import stainless.annotation.cCode.drop
-
+import StainlessProperies.*
 
 // sealed trait NodeState{
 //     def is_ready(): Boolean
@@ -34,7 +32,7 @@ import stainless.annotation.cCode.drop
                 However, since we are interested only in the system's partition-tolerance capabilities, we ignore the values and only keep track of the keys 
     @param leafset_data the set of data keys that our node keeps track of for replication purposes on behalf of the nodes in its leafset
 */
-case class PastryNode(id: Int, l: BigInt, routingTable: SortedList,leafset: SortedList, own_data: List[Int], leafset_data: Set[Int]){
+case class PastryNode(id: Int, l: BigInt, routingTable: SortedList,leafset: SortedList, own_data: SortedList, leafset_data: SortedList){
     /*
         For some reason, stainless isn't really good at using Properties proven outside of a class 
 
@@ -54,7 +52,10 @@ case class PastryNode(id: Int, l: BigInt, routingTable: SortedList,leafset: Sort
         (l/2 + l/2) == l &&
         leafset.size() == l && 
         leafset.isValid &&
-        routingTable.isValid
+        routingTable.isValid &&
+        own_data.isValid &&
+        leafset_data.isValid &&
+        !own_data.exists(key=>leafset_data.contains(key))
     }
 
        
@@ -71,12 +72,13 @@ case class PastryNode(id: Int, l: BigInt, routingTable: SortedList,leafset: Sort
         require(leafset.contains(dropped_node.id))
         require(!leafset.contains(replacing_node.id))
         require(dropped_node.id != id) // can't drop yourself
+        require(!own_data.exists(k=>replacing_node.own_data.contains(k))) // our data doesn't contain the replacing node's data
         
         val new_ls = leafset.remove(dropped_node.id).insert(replacing_node.id)
         val newrt = routingTable.merge(replacing_node.routingTable)
         
-        val new_data = if !take_ownership then own_data else own_data ++ dropped_node.own_data
-        val new_leafset_data = if !take_ownership then leafset_data ++ replacing_node.leafset_data else leafset_data ++ replacing_node.leafset_data -- dropped_node.own_data.toSet
+        val new_data = if !take_ownership then own_data else own_data.merge(dropped_node.own_data)
+        val new_leafset_data = if !take_ownership then leafset_data.merge(replacing_node.own_data) else leafset_data.merge(replacing_node.own_data).removeAll(dropped_node.own_data)
 
         PastryNode(id,l,newrt,new_ls,new_data,new_leafset_data)
     }//.ensuring((ret:PastryNode) => dropped_node.own_data.forall(k=>ret.own_data.contains(k)) && own_data.forall(k=>ret.own_data.contains(k)))
@@ -85,11 +87,38 @@ case class PastryNode(id: Int, l: BigInt, routingTable: SortedList,leafset: Sort
 }
 
 case class PastryNetwork(nodes: List[PastryNode],l: BigInt){
-    require(isvalidstainless(nodes,node=>node.id))
-    // We ignore "too small" networks, which don't even have l nodes
-    require(nodes.size >= l)
+    def isValidHelper(l: List[PastryNode]): Unit = {
+        require(l.forall(n=>n.isValid))
+        l match{
+            case Nil() => 
+            case Cons(h, t) => {
+                assert(h.isValid)
+                assert(h.own_data.isValid)
+                isValidHelper(t)
+            } 
+        }
+    }.ensuring(l.forall(n=>n.own_data.isValid))
+
+    def iuwrtIsCallable(l: List[PastryNode]) : Unit = {
+        require(l.forall(n=>n.isValid))
+        isValidHelper(l)
+    }.ensuring(isUniqueWRT(l,n=>n.own_data) || !isUniqueWRT(l,n=>n.own_data))
+
+    
+    def isValid: Boolean = {
+        isvalidstainless(nodes,node=>node.id) // the nodes must be stored in an ordered set fashion
+        // We ignore "too small" networks, which don't even have l nodes
+        && nodes.size >= l
+        && nodes.forall(node=>node.isValid) // all the nodes must be valid
+        && 
+        {
+            iuwrtIsCallable(nodes)
+            isUniqueWRT(nodes,node=>node.own_data) // each node is accountable for its own data, each datum is accounted for by only one node (other nodes only have replicas)
+        }
+    }
 
     def node_ids(): SortedList = {
+        require(isValid)
         fromStainlessSortedList(nodes,node=>node.id)
     }.ensuring((res:SortedList)=>res.isValid)
 
@@ -103,9 +132,22 @@ case class PastryNetwork(nodes: List[PastryNode],l: BigInt){
         size() == 0
     }
 
-    def all_keys(): Set[Int] = {
-        nodes.foldLeft(Set())((set,node) => set++node.own_data.toSet)
-    }
+    def all_keys(): SortedList = {
+        require(isValid)
+        def innerAKFL(acc:SortedList,rest:List[PastryNode]): SortedList = {
+            require(acc.isValid)
+            require(rest.forall(n=>n.isValid))
+            rest match{
+                case Nil() => acc
+                case Cons(x, xs) => {
+                    assert(x.isValid)
+                    innerAKFL(acc.merge(x.own_data),xs)
+                }
+            }
+        }.ensuring((ret:SortedList) => ret.isValid)
+        innerAKFL(vp.Nil,nodes)
+    }.ensuring(_.isValid)
+
     def contains(element: Int): Boolean = {
         nodes.exists(node => node.own_data.contains(element))
     }
@@ -113,15 +155,17 @@ case class PastryNetwork(nodes: List[PastryNode],l: BigInt){
         elements.forall(e => contains(e))
     }
 
+    def get_ids(aa:List[PastryNode]): SortedList={vp.Nil}
 
     def drop(nodes_to_drop: List[PastryNode]): PastryNetwork = {
-        require(is_synched()) // the network must be in steady state
+        require(isValid)
         require(nodes_to_drop.forall(node => nodes.contains(node))) // All the nodes we are dropping are nodes in the network        
         require(isvalidstainless(nodes_to_drop,node=>node.id))
         require(!nodes_to_drop.exists(dropped_node => node_ids().isFirstLastK(l/2,dropped_node.id)))
+        require(nodes.forall(node => node.leafset.subsetSize(get_ids(nodes_to_drop)) < l/2))
         this
         // TODO Implement drop
-    }
+    }.ensuring((dropped:PastryNetwork) => dropped.isValid && all_keys() == dropped.all_keys())
     //def join(node: PastryNode): PastryNetwork
 }
 
@@ -130,6 +174,26 @@ case class PastryNetwork(nodes: List[PastryNode],l: BigInt){
 @ghost
 object PastryProps{
     import slProperties.*
+
+    // def innerFl(node:PastryNode,acc:SortedList): Unit = {
+    //     require(node.isValid)
+    //     require(acc.isValid)
+    // }.ensuring(acc.merge(node.own_data).isValid)
+
+    // def stainlessFlPreserversValidity(start: List[PastryNode],acc: SortedList): Unit = {
+    //     require(start.forall(node=>node.isValid))
+    //     require(acc.isValid)
+    //     start match {
+    //         case Nil() =>
+    //         case Cons(node, xs) => {
+    //             assert(acc.isValid)
+    //             assert(node.own_data.isValid)
+    //             innerFl(node,acc)
+    //             assert(acc.merge(node.own_data).isValid)
+    //             stainlessFlPreserversValidity(xs,acc.merge(node.own_data))
+    //         }
+    //     }
+    // }.ensuring(start.foldLeft(acc)((a,n) => a.merge(n.own_data)).isValid)
 
     def nodeBuiltFromRemoveHasCorrectLS(start:PastryNode,dropped_node:PastryNode,replacement:PastryNode) : Unit ={
         require(start.isValid)
@@ -143,6 +207,8 @@ object PastryProps{
         insertNewElementIncreasesSize(start.leafset.remove(dropped_node.id),replacement.id,start.l-1)
     }.ensuring(start.leafset.remove(dropped_node.id).insert(replacement.id).size() == (start.l))
 
+    //def toImplies
+
     def nodeBuiltFromRemoveIsValid(start:PastryNode,dropped_node:PastryNode,replacement:PastryNode,to: Boolean): Unit = {
         require(start.isValid)
         require(replacement.isValid)
@@ -150,13 +216,17 @@ object PastryProps{
         require(start.leafset.contains(dropped_node.id))
         require(!start.leafset.contains(replacement.id))
         require(dropped_node.id != start.id) // can't drop yourself
+        require(!start.own_data.exists(k=>replacement.own_data.contains(k))) // our data doesn't contain the replacing node's data
+        
         
         nodeBuiltFromRemoveHasCorrectLS(start,dropped_node,replacement)
+
         val built = start.remove_from_ls_and_replace(dropped_node,replacement,to)
 
-        assert(built.leafset.size() == start.l) // Stainless, istg, just use nodeBuiltFromRemoveHasCorrectLS arghhhhhhhhhh
+        assert(built.leafset.size() == start.l)
         assert(built.leafset.isValid)
         assert(built.routingTable.isValid)
+        assert(!built.own_data.exists(k=>built.leafset.contains(k)))
     }.ensuring(start.remove_from_ls_and_replace(dropped_node,replacement,to).isValid)
 
     // def dropIsCorrectEasy(n: PastryNetwork, dropped_nodes: List[PastryNode]): Unit ={
