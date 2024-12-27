@@ -3,8 +3,7 @@ package vp
 import stainless.lang.*
 import stainless.annotation.*
 import stainless.collection.*
-import StainlessConverter.*
-
+import StainlessProperies.*
 /**
     This file contains a decorator for a sorted List[Int], that contains only unique elements (hence, sorted Set)
     It describes a List that is always sorted in *ascending* order
@@ -44,7 +43,14 @@ sealed abstract class SortedList{
             case Nil => false
             case Cons(x,xs) => if x == e then true else xs.contains(e)
         }
-    } 
+    }
+
+    final def containsOne(other: SortedList): Boolean = {
+        other match{
+            case vp.Nil => false
+            case vp.Cons(x, xs) => contains(x) || containsOne(xs) 
+        }
+    }
 
     final def head: Int = { 
         require(this != Nil)
@@ -71,6 +77,12 @@ sealed abstract class SortedList{
     }.ensuring {(res:SortedList) =>
         res.isValid && res.content() == this.content() ++ Set(e) && (size() <= res.size()) && res.size() <= (size() + 1)}
     
+    final def isSubsetOf(other: SortedList): Boolean = {
+        require(isValid)
+        require(other.isValid)
+        forall(k=>other.contains(k))
+    }
+
     final def remove(e: Int) : SortedList = {
         require(isValid)
         this match{
@@ -78,21 +90,21 @@ sealed abstract class SortedList{
             case Cons(x, xs) if (x == e) => xs
             case Cons(x, xs) if (x != e)=> Cons(x, xs.remove(e))
         }
-    }.ensuring((res:SortedList) =>  res.isValid)
+    }.ensuring(_.isValid)
 
     final def drop(i: Int): SortedList ={
         require(isValid)
         this match 
             case Nil => Nil
             case Cons(x, xs) => if i > 0 then xs.drop(i-1) else Cons(x, xs)
-    }.ensuring((res:SortedList) => res.isSorted())
+    }.ensuring(_.isValid)
 
     final def take(i: Int): SortedList = {
         require(isValid)
         this match
             case Nil => Nil
             case Cons(x, xs) => if i > 0 then Cons(x, xs.take(i-1)) else Nil
-    }.ensuring((res:SortedList) => res.isSorted())
+    }.ensuring(_.isValid)
 
     final def isFirstK(k:BigInt, e:Int): Boolean = {
         require(isValid)
@@ -171,6 +183,15 @@ sealed abstract class SortedList{
         }
     }.ensuring((sl:SortedList)=> sl.isValid)
 
+    final def removeAll(from: SortedList): SortedList = {
+        require(isValid)
+        require(from.isValid)
+        from match{
+            case Nil => this
+            case Cons(x,xs) => remove(x).removeAll(xs)
+        }
+    }.ensuring(ret => ret.isValid && ret.isSubsetOf(this))
+
     final def forall(p:Int=>Boolean): Boolean={
         require(isValid)
         this match{
@@ -181,19 +202,29 @@ sealed abstract class SortedList{
 
     final def exists(p:Int=>Boolean): Boolean={
         require(isValid)
-        this match{
-            case vp.Nil => true
-            case vp.Cons(x, xs) => p(x) || xs.exists(p)
-        }
+        !forall(!p(_))
     }
 
-    //def findClosest(e:Int): Boolean
+    final def subsetSize(other: SortedList): BigInt = {
+        0
+    }
 }
 case object Nil extends SortedList
 case class Cons(x: Int, tail: SortedList) extends SortedList
 
 
-object StainlessConverter{
+object StainlessProperies{
+    def isASet[T](sl:List[T],key:T=>Int): Boolean ={
+        sl match{
+            case stainless.collection.Cons(x, xs) => {
+                xs match
+                    case stainless.collection.Cons(xx, xxs) => key(x) != key(xx) && isASet[T](xs,key)  
+                    case stainless.collection.Nil() => true
+            }
+            case stainless.collection.Nil() => true
+        }
+    }
+
     def isvalidstainless[T](sl:List[T],key:T=>Int): Boolean = {
         sl match{
             case stainless.collection.Cons(x, xs) => {
@@ -212,6 +243,21 @@ object StainlessConverter{
             case stainless.collection.Nil() => Nil
         }
     }.ensuring((res:SortedList) => res.isValid)
+
+    def isUniqueWRT[T](l: List[T],key: T=>SortedList): Boolean = {
+        require(l.forall(t=>key(t).isValid))
+        def innerIUWRT(acc:SortedList, rest: List[T]): Boolean = {
+            require(acc.isValid)
+            require(rest.forall(t=>key(t).isValid))
+            rest match
+                case stainless.collection.Nil[T]() => true
+                case stainless.collection.Cons(x, xs) => {
+                    assert(key(x).isValid)
+                    if acc.containsOne(key(x)) then false else innerIUWRT(acc.merge(key(x)),xs)
+                } 
+        }
+        innerIUWRT(vp.Nil,l)
+    }
 }
 
 @ghost
@@ -362,4 +408,119 @@ object slProperties{
             case vp.Cons(x, xs) => ncImplremoveNc(xs,e,k)
         }
     }.ensuring(!sl.remove(k).contains(e))
+
+    def keySmallerImpliesNEQ[T](key:T=>Int, e1:T,e2:T): Unit={
+        require(key(e1)<key(e2))
+    }.ensuring(key(e1)!=key(e2))
+    def validSLImpliesSet[T](sl:List[T],key:T=>Int):Unit={
+        require(isvalidstainless(sl,key))
+        sl match {
+            case stainless.collection.Nil[T]() => 
+            case stainless.collection.Cons[T](x, xs) => {
+                xs match{
+                    case stainless.collection.Nil() => 
+                    case stainless.collection.Cons(xx, xxs) => {
+                        assert(key(x)<key(xx))
+                        keySmallerImpliesNEQ(key,x,xx)
+                        validSLImpliesSet(xs,key)
+                    } 
+                }
+            } 
+        }
+    }.ensuring(isASet(sl,key))
+
+    def reflexiveSub(l:SortedList): Unit = {
+        require(l.isValid)
+        l match
+            case vp.Cons(x, xs) => {
+                assert(l.contains(x))
+                reflexiveSub(xs)
+            } 
+            case vp.Nil => 
+        
+    }.ensuring(l.isSubsetOf(l))
+
+    def aSubCANDbSubCIMPLaCUPbSubC(a:SortedList,b:SortedList,c:SortedList): Unit = {
+        require(a.isValid)
+        require(b.isValid)
+        require(c.isValid)
+        require(a.isSubsetOf(c))
+        require(b.isSubsetOf(c))
+        val ab = a.merge(b)
+        (a,b) match{
+            case (Nil,_) => {
+                assert(ab == b)
+            } 
+            case (_,Nil) => {
+                assert(ab == a)
+            } 
+            case (Cons(ax,axs),Cons(bx,bxs)) => {
+                if ax < bx then {
+                    assert(ab.head == ax)
+                    assert(ab.contains(ax))
+                    aSubCANDbSubCIMPLaCUPbSubC(axs,b,c)
+                }
+                else{
+                    assert(ab.head == bx)
+                    assert(ab.contains(bx))
+                    aSubCANDbSubCIMPLaCUPbSubC(a,bxs,c)
+                }
+            }
+        }
+    }.ensuring(a.merge(b).isSubsetOf(c))
+
+    def remImpliesSubset(l:SortedList, e: Int) : Unit = {
+        require(l.isValid)
+        // l match
+        //     case vp.Cons(x, xs) =>{
+        //         if x != e then {
+        //             remImpliesSubset(xs,e)
+        //         }
+        //         else{
+        //             assert(l.remove(x)  == xs)
+        //             removedImpliesDoesNotContain(l,e)
+        //         }
+        //     }
+        //     case vp.Nil => 
+        reflexiveSub(l)
+        aSubCANDbSubCIMPLaCUPbSubC(l.remove(e),l,l)
+    }.ensuring(l.remove(e).isSubsetOf(l))
+
+    // def remSuperSetImpliesNotContainSubset(l:SortedList,subset:SortedList,superset: SortedList): Unit = {
+    //     require(l.isValid)
+    //     require(subset.isValid)
+    //     require(superset.isValid)
+    //     require(subset.isSubsetOf(superset)) // subset <= superset
+    
+    //     val rsuper = l.removeAll(superset)
+    //     val rsub   = l.removeAll(subset)
+    //     superset match
+    //         case vp.Cons(x, xs) =>{
+    //             if subset.contains(x) then{
+    //                 assert(!rsub.contains(x))
+    //                 assert(!rsuper.contains(x))
+    //                 remSuperSetImpliesNotContainSubset(l.remove(x),subset.remove(x),xs)
+    //             }
+    //             else{
+    //                 if l.contains(x) then assert(rsub.contains(x))
+    //             }
+    //         }
+    //         case vp.Nil => 
+        
+    // }.ensuring(l.removeAll(superset).isSubsetOf(l.removeAll(subset)))
+
+    // def removeAllImpliesNotExistContain(data_to_remove: SortedList,removed_from_list: SortedList): Unit = {
+    //     require(data_to_remove.isValid)
+    //     require(removed_from_list.isValid)
+    //     data_to_remove match
+    //         case vp.Nil => 
+    //         case vp.Cons(x, xs) =>{
+    //             removedImpliesDoesNotContain(removed_from_list,x)
+    //             val ro = removed_from_list.remove(x)
+    //             assert(removed_from_list.removeAll(Cons(x,Nil)) == ro)
+    //             assert(!removed_from_list.removeAll(data_to_remove).exists(k=>ro.contains(k)))
+    //             removeAllImpliesNotExistContain(xs,removed_from_list.remove(x))
+    //         } 
+        
+    // }.ensuring(!data_to_remove.exists(k=>removed_from_list.removeAll(data_to_remove).contains(k)))
 }
