@@ -19,6 +19,7 @@ case class RoutingTable(var id: Int=0,var ids: Map[Int, List[Int]] = Map()) {
     def biggestMatchingPrefix(key: Int): Int = {
         val l = shl(id, key)
         def foreach(ids: List[Int], ans: Int , key: Int): Int = {
+            decreases(ids.length)
             ids match   
                 case Nil() => key
                 case x :: xs =>
@@ -40,8 +41,8 @@ case class RoutingTable(var id: Int=0,var ids: Map[Int, List[Int]] = Map()) {
             ids = ids.+(shl(id, this.id), List(id))
 
     }
-    def update(other: RoutingTable): Unit = {
-        val keys = ids.keys ++ other.ids.keys
+    def update(other: Map[Int, List[Int]]): Unit = {
+        val keys = ids.keys ++ other.keys
         def updater(keys: List[Int]): Unit = {
             keys match 
                 case x :: xs => 
@@ -52,7 +53,7 @@ case class RoutingTable(var id: Int=0,var ids: Map[Int, List[Int]] = Map()) {
                                 foreach(rest)      
                             case _ =>
                     }
-                    foreach(other(x))
+                    foreach(if other.contains(x) then other(x) else List())
                     updater(xs)
                 case _ => 
         }

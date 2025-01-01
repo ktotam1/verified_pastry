@@ -1,7 +1,7 @@
 package pastry
 import stainless.lang.BigInt
 import stainless.annotation.mutable
-
+import stainless.lang.decreases
 // case class Cell[T](var v: )
 
 def abs(x: Int): Int = {
@@ -59,6 +59,7 @@ def shl(a: Int, b: Int): Int = {
     var j = 0
     var done = false
     while(!done){
+        decreases(10-j)
         if j==10 || a/i == b/i then
             done = true
         else 

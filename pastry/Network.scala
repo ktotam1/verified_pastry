@@ -11,7 +11,9 @@ class Network(val nodes: Cell[MutableList[Node]]) {
     }
 
     def send(msg: Message, key: Int, to: Int): Unit = {
+        decreases(dist(key,to))
         def foreach(nodes: MutableList[Node]): Unit = {
+            decreases(nodes.length)
             nodes match 
                 case MutableNil() => 
                 case MutableCons(x,xs) => 
