@@ -58,7 +58,7 @@ sealed abstract class SortedList{
             case Cons(x, xs) => x
     }
 
-    final def body: SortedList = {
+    final def tail: SortedList = {
         require(this != Nil)
         this match {
             case Cons(x, xs) => xs
@@ -244,7 +244,7 @@ sealed abstract class SortedList{
     }
 }
 case object Nil extends SortedList
-case class Cons(x: Int, tail: SortedList) extends SortedList
+case class Cons(x: Int, xs: SortedList) extends SortedList
 
 
 object StainlessProperies{
@@ -480,8 +480,8 @@ object slProperties{
         require(l1.isSubsetOf(l2))
         require(l1 != Nil)
         require(l2 != Nil)
-        if (l1.isSubsetOf(l2.body)) leftTailSubset(l1, l2.body)
-    }.ensuring(l1.body.isSubsetOf(l2.body))
+        if (l1.isSubsetOf(l2.tail)) leftTailSubset(l1, l2.tail)
+    }.ensuring(l1.tail.isSubsetOf(l2.tail))
 
 
     def appendLeftStillContains(l: SortedList, newhead: Int, e: Int): Unit = {
@@ -536,7 +536,7 @@ object slProperties{
         require(l1.isValid)
         require(l1 != Nil)
         require(l1.forall(p))
-    }.ensuring(l1.body.forall(p))
+    }.ensuring(l1.tail.forall(p))
 
     def leftTailForallContains(l1: SortedList, l2: SortedList): Unit = {
         require(l1.isValid)
@@ -544,7 +544,7 @@ object slProperties{
         require(l1 != Nil)
         require(l1.forall(k=>l2.contains(k)))
         leftTailForallHolds(l1, k=>l2.contains(k))
-    }.ensuring(l1.body.forall(k => l2.contains(k)))
+    }.ensuring(l1.tail.forall(k => l2.contains(k)))
 
     def headGreaterImplNotContains(l: SortedList, e: Int): Unit = {
         require(l.isValid)
@@ -581,7 +581,7 @@ object slProperties{
         require(l.isValid)
         require(l.contains(e))
         require(l.head != e)
-    }.ensuring(l.body.contains(e))
+    }.ensuring(l.tail.contains(e))
 
     def forallContainsAndHeadNotEqlImplRightTailsForallContains(l1: SortedList, l2: SortedList): Unit = {
         require(l1.isValid)
@@ -603,7 +603,7 @@ object slProperties{
                 forallContainsAndHeadNotEqlImplRightTailsForallContains(xs, l2)
             }
         }
-    }.ensuring(l1.forall(k=>l2.body.contains(k)))
+    }.ensuring(l1.forall(k=>l2.tail.contains(k)))
 
     def tailsForallContains(l1: SortedList, l2: SortedList): Unit = {
         require(l1.isValid)
@@ -629,7 +629,7 @@ object slProperties{
             }
         }
 
-    }.ensuring(l1.body.forall(k=>l2.body.contains(k)))
+    }.ensuring(l1.tail.forall(k=>l2.tail.contains(k)))
 
     def forallContainsSubset(l1: SortedList, l2: SortedList): Unit = {
         require(l1.isValid)
@@ -725,7 +725,7 @@ object slProperties{
                 }
             }
         }
-    }.ensuring(l1.body.isSubsetOf(l2))
+    }.ensuring(l1.tail.isSubsetOf(l2))
 
     def remImpliesSubset(l:SortedList, e: Int) : Unit = {
         require(l.isValid)
@@ -751,16 +751,16 @@ object slProperties{
         require(l1.isSubsetOf(l2))
         require(l2.isSubsetOf(l3))
         if (l1 != Nil) {
-            if (l1.isSubsetOf(l2.body)) {
+            if (l1.isSubsetOf(l2.tail)) {
                 leftTailSubset(l1, l2)
                 strongTailsSubset(l2, l3)
-                subsetTransitivity(l1, l2.body, l3.body)
-            } else if (l2.isSubsetOf(l3.body)) {
-                subsetTransitivity(l1, l2, l3.body)
+                subsetTransitivity(l1, l2.tail, l3.tail)
+            } else if (l2.isSubsetOf(l3.tail)) {
+                subsetTransitivity(l1, l2, l3.tail)
             } else {
                 strongTailsSubset(l1, l2)
                 strongTailsSubset(l2, l3)
-                subsetTransitivity(l1.body, l2.body, l3.body)
+                subsetTransitivity(l1.tail, l2.tail, l3.tail)
             }
         }
     }.ensuring(l1.isSubsetOf(l3))
@@ -790,28 +790,29 @@ object slProperties{
         }
     }.ensuring(l.removeAll(from).isSubsetOf(l))
 
-    // def remSuperSetImpliesNotContainSubset(l:SortedList,subset:SortedList,superset: SortedList): Unit = {
-    //     require(l.isValid)
-    //     require(subset.isValid)
-    //     require(superset.isValid)
-    //     require(subset.isSubsetOf(superset)) // subset <= superset
+    def remSuperSetImpliesNotContainSubset(l:SortedList,subset:SortedList,superset: SortedList): Unit = {
+        //This could also have been called "removeAll is an invariant wrt subset"
+        require(l.isValid)
+        require(subset.isValid)
+        require(superset.isValid)
+        require(subset.isSubsetOf(superset)) // subset <= superset
     
-    //     val rsuper = l.removeAll(superset)
-    //     val rsub   = l.removeAll(subset)
-    //     superset match
-    //         case vp.Cons(x, xs) =>{
-    //             if subset.contains(x) then{
-    //                 assert(!rsub.contains(x))
-    //                 assert(!rsuper.contains(x))
-    //                 remSuperSetImpliesNotContainSubset(l.remove(x),subset.remove(x),xs)
-    //             }
-    //             else{
-    //                 if l.contains(x) then assert(rsub.contains(x))
-    //             }
-    //         }
-    //         case vp.Nil => 
+        val rsuper = l.removeAll(superset)
+        val rsub   = l.removeAll(subset)
+        superset match
+            case vp.Cons(x, xs) =>{
+                if subset.contains(x) then{
+                    assert(!rsub.contains(x))
+                    assert(!rsuper.contains(x))
+                    remSuperSetImpliesNotContainSubset(l.remove(x),subset.remove(x),xs)
+                }
+                else{
+                    if l.contains(x) then assert(rsub.contains(x))
+                }
+            }
+            case vp.Nil => 
         
-    // }.ensuring(l.removeAll(superset).isSubsetOf(l.removeAll(subset)))
+    }.ensuring(l.removeAll(superset).isSubsetOf(l.removeAll(subset)))
 
     // def removeAllImpliesNotExistContain(data_to_remove: SortedList,removed_from_list: SortedList): Unit = {
     //     require(data_to_remove.isValid)
