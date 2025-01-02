@@ -512,6 +512,7 @@ object slProperties{
         require(l1.isValid)
         require(l2.isValid)
         require(l1.isSubsetOf(l2))
+        decreases(l2.size())
         (l1, l2) match {
             case (Nil, _) => ()
             case (Cons(x, xs), Cons(y, ys)) => {
@@ -655,6 +656,7 @@ object slProperties{
         require(c.isValid)
         require(a.isSubsetOf(c))
         require(b.isSubsetOf(c))
+        decreases(a.merge(b).size())
 
         (a, b) match {
             case (Nil, _) => {
@@ -678,7 +680,6 @@ object slProperties{
                     leftTailSubset(b, c)
                     mergeSubsetPreservation(at, bt, c)
                     val atmbt = at.merge(bt)
-                    // at.merge(bt).isSubsetOf(c)
                     assert(c.contains(ah))
                     assert(ret == Cons(ah, atmbt))
                     subsetContainAll(atmbt, c)
