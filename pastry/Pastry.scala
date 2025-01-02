@@ -94,7 +94,7 @@ case class Node(id: Int, replicationFactor: Int,
             if !route(message, key) then 
                 // println(s"${this.id} failed to route; spamming neighbors")
                 def foreach(nodes: List[Int]): Unit = {
-                    decreases(nodes.length)
+                    // decreases(nodes.length)
                     nodes match 
                         case x :: xs =>
                             if shl(x, key) > shl(id, key) && dist(x, key) < dist(id, key) then
