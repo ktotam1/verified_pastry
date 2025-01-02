@@ -35,7 +35,7 @@ sealed abstract class SortedList{
 
     final def content(): Set[Int] = this match {
         case Nil => Set()
-        case Cons(i, t) => Set(i) ++ t.content()
+        case Cons(i, t) => t.content() + i
     }
 
     final def contains(e: Int): Boolean = {
@@ -104,7 +104,7 @@ sealed abstract class SortedList{
         require(other.isValid)
         (this, other) match{
             case (Nil, _) => true
-            case (_, Nil) => false
+            case (Cons(x, xs), Nil) => false
             case (Cons(x, xs), Cons(y, ys)) => {
                 if (x == y) {
                     xs.isSubsetOf(ys)
@@ -240,20 +240,47 @@ sealed abstract class SortedList{
     }
 
     final def set_equals(other: SortedList):Boolean = {
+        require(isValid)
         require(other.isValid)
         (this,other) match{
             case (Nil,Nil) => true
-            case (Cons(x,xs),Cons(y,ys)) => x== y && xs.set_equals(ys)
+            case (Cons(x,xs),Cons(y,ys)) => x==y && xs.set_equals(ys)
             case _ => false
         }
     }
 
     override def equals(other:Any): Boolean = {
+        require(isValid)
         other match{
             case sl: SortedList => if sl.isValid then set_equals(sl) else false
             case _ => false
         }
     }
+
+    final def intersect(other:SortedList): SortedList = {
+        require(isValid)
+        require(other.isValid)
+        decreases(size()+other.size())
+        (this,other) match{
+            case (Nil,_) => Nil
+            case (_,Nil) => Nil
+            case (Cons(x,xs), Cons(y,ys)) =>{
+                assert(xs.isValid)
+                assert(ys.isValid)
+                if x == y then Cons(x,xs.intersect(ys))
+                else if x<y then{
+                    //x will never be in `other`
+                    //therefore x not in interesect
+                    xs.intersect(other)
+                }
+                else{
+                    // x>y
+                    // y will never be in `this`
+                    this.intersect(ys)
+                }
+            }
+        }
+    }.ensuring((ret:SortedList) => ret.isValid)
 }
 case object Nil extends SortedList
 case class Cons(x: Int, xs: SortedList) extends SortedList
@@ -304,6 +331,10 @@ object StainlessProperies{
         }
         innerIUWRT(vp.Nil,l)
     }
+
+    def zsetProp(l1: Set[Int],l2: Set[Int],x: Int):Unit = {
+        require(!l2.contains(x))
+    }.ensuring((l1 -- (l2+x)).subsetOf(l1--l2))
 }
 
 @ghost
@@ -443,7 +474,6 @@ object slProperties{
     def ncImplremoveNc(sl: SortedList, e:Int, k:Int): Unit = {
         require(sl.isValid)
         require(!sl.contains(e))
-        require(k!=e)
         sl match{
             case vp.Nil => 
             case vp.Cons(x, xs) => ncImplremoveNc(xs,e,k)
@@ -471,13 +501,13 @@ object slProperties{
         }
     }.ensuring(isASet(sl,key))
 
-    def reflexiveSub(l:SortedList): Unit = {
+    def subsetReflexivity(l:SortedList): Unit = {
         require(l.isValid)
         l match {
             case Nil => ()
             case Cons(x, xs) => {
                 assert(l.contains(x))
-                reflexiveSub(xs)
+                subsetReflexivity(xs)
             }
         }        
     }.ensuring(l.isSubsetOf(l))
@@ -555,6 +585,8 @@ object slProperties{
     }.ensuring(l1.tail.forall(k => l2.contains(k)))
 
     def headGreaterImplNotContains(l: SortedList, e: Int): Unit = {
+        // Is equivalent to vsosa
+
         require(l.isValid)
         require(l != Nil)
         require(l.head > e)
@@ -619,6 +651,7 @@ object slProperties{
         require(l1 != Nil)
         require(l2 != Nil)
         require(l1.forall(k=>l2.contains(k)))
+        decreases(l1.size())
 
         (l1, l2) match {
             case (Cons(x, Nil), Cons(y, _)) => ()
@@ -657,7 +690,6 @@ object slProperties{
             }
         }
     }.ensuring(l1.isSubsetOf(l2))
-
 
     def mergeSubsetPreservation(a:SortedList, b:SortedList, c:SortedList): Unit = {
         require(a.isValid)
@@ -738,7 +770,7 @@ object slProperties{
 
     def remImpliesSubset(l:SortedList, e: Int) : Unit = {
         require(l.isValid)
-        reflexiveSub(l)
+        subsetReflexivity(l)
         l match{
             case Nil => {
                 assert(l.remove(e).isSubsetOf(l))
@@ -794,7 +826,7 @@ object slProperties{
         require(from.isValid)
 
         from match {
-            case Nil => reflexiveSub(l)
+            case Nil => subsetReflexivity(l)
             case Cons(x, xs) => {
                 val mid = l.remove(x)
                 val ret = l.removeAll(from)
@@ -814,27 +846,214 @@ object slProperties{
         }
     }.ensuring(l.removeAll(from).isSubsetOf(l))
 
-    // def remSuperSetImpliesNotContainSubset(l:SortedList,subset:SortedList,superset: SortedList): Unit = {
+    def remDiffElemPreservesContains(l:SortedList,e1:Int,e2:Int):Unit={
+        require(l.isValid)
+        require(e1!=e2)
+        val remd = l.remove(e2)
+        if(!l.contains(e1)) then{
+            ncImplremoveNc(l,e1,e2)
+        }
+        else{
+            assert(l.contains(e1))
+            l match{
+                case Nil => {}
+                case Cons(x,xs) => {
+                    if x==e1 then{
+                        assert(l.contains(e1))
+                        if e1 < e2 then {
+                            assert(remd.head == x)
+                            assert(remd.contains(e1))
+                        }
+                        else{
+                            assert(e1>e2)
+                            vsosaImplNotContain(l,e2)
+                            assert(!l.contains(e2))
+                            ncImplremoveNc(l,e2,e2)
+                        }
+                    }
+                    else if (x < e1) then{
+                        remDiffElemPreservesContains(xs,e1,e2)
+                    }
+                    else{
+                        vsosaImplNotContain(l,e1)
+                        assert(false)
+                    }
+                }
+            }
+        }
+
+    }.ensuring(l.contains(e1) == l.remove(e2).contains(e1))
+
+    def zzzzzzzzremoveMoreSubsetOfRemoveLess(l1:SortedList,l2:SortedList,x:Int): Unit = {
+        require(l1.isValid)
+        require(l2.isValid)
+        require(Cons(x,l2).isValid)
+        assert(!l2.contains(x))
+        zsetProp(l1.content(),l2.content(),x)
+    }.ensuring(l1.removeAll(Cons(x,l2)).isSubsetOf(l1.removeAll(l2)))
+
+    def remdAllSubsetOfRemHead(l1:SortedList,l2:SortedList,l3:SortedList,h:Int): Unit ={
+        // If somehow l1.removeAll(l2) is a subset of some list l3
+        // then l1.removeAll(Cons(h,l2)) is a subset of some list l3
+        require(l1.isValid)
+        require(l2.isValid)
+        require(l3.isValid)
+        require(Cons(h,l2).isValid)
+        require(l1.removeAll(l2).isSubsetOf(l3))
+
+        zzzzzzzzremoveMoreSubsetOfRemoveLess(l1,l2,h)
+        subsetTransitivity(l1.removeAll(Cons(h,l2)),l1.removeAll(l2),l3)
+    }.ensuring(l1.removeAll(Cons(h,l2)).isSubsetOf(l3))
+
+    // def zzzzzzremAllSubsetOfRem(l:SortedList,e:Int,l2:SortedList): Unit ={
+    //     require(l.isValid)
+    //     require(l2.isValid)
+    //     require(l2.contains(e))
+    //     decreases(l2)
+    //     l2 match{
+    //         case Cons(x,Nil) => {
+    //             assert(x==e)
+    //             assert(l.removeAll(l2) == l.remove(x))
+    //             subsetReflexivity(l)
+    //         }
+    //         case Cons(x,xs) => {
+    //             if x==e then {
+    //                 assert(!xs.contains(e))
+
+    //             }
+    //             else{
+    //                 zzzzzzremAllSubsetOfRem(l,e,xs)
+    //             }
+    //         }
+    //     }
+    // }.ensuring(l.removeAll(l2).isSubsetOf(l.remove(e)))
+
+    // def zzzzzcontDepsRemovedFromListRec(l:SortedList,e:Int,l2:SortedList): Unit ={
+    //     require(l.isValid)
+    //     require(l2.isValid)
+    //     require(l.contains(e))
+    //     require(l2.contains(e))
+    //     decreases(l2.size())
+
+    //     assert(l2!=Nil)
+    //     l2 match{
+    //         case Cons(x,Nil) => {
+    //             assert(x==e)
+    //             assert(l.removeAll(l2) == l.remove(x))
+    //             removedImpliesDoesNotContain(l,e)
+    //             assert(!l.removeAll(l2).contains(e))
+    //         }
+    //         case Cons(x,xs) => {
+    //             val lhead = l.remove(x)
+    //             if(x!=e){
+    //                 remDiffElemPreservesContains(l,e,x)
+    //                 assert(lhead.contains(e))
+    //                 assert(l.removeAll(l2).isSubsetOf(lhead))
+    //                 zzzzzcontDepsRemovedFromListRec(l,e,xs)
+    //             }
+    //             else{
+                    
+    //             }
+    //         }
+    //     }
+    // }.ensuring(!l.removeAll(l2).contains(e))
+
+    // def zzzzcontDepsRemovedFromList(l:SortedList,e:Int,l2:SortedList):Unit = {
+    //     require(l.isValid)
+    //     require(l2.isValid)
+    //     require(l.contains(e))
+    //     l2 match{
+    //         case Nil=>{
+    //             assert(!l2.contains(e))
+    //             assert(l.removeAll(l2) == l)
+    //             assert(l.removeAll(l2).contains(e))
+    //         }
+    //         case Cons(x,xs) =>{
+    //             if l2.contains(e) then{
+    //                 assert(!l.removeAll(l2).contains(e))
+    //             }
+    //             else{
+    //                 assert(l.removeAll(l2).contains(e))
+    //             }  
+    //         }
+    //     }
+    // }.ensuring(l.removeAll(l2).contains(e) == !l2.contains(e))
+
+    // def zzzremAllPreservesContains(l:SortedList,e:Int,l2:SortedList): Unit = {
+    //     require(l.isValid)
+    //     require(l2.isValid)
+    //     require(!l.contains(e))
+
+    //     decreases(l2.size())
+    //     assert(l.remove(e).removeAll(l2) == l.removeAll(Cons(e,l2)))
+    //     ncImplremoveNc(l,e,e)
+    //     assert(!l.remove(e).contains(e))
+    //     l2 match{
+    //         case Nil => {}
+    //         case Cons(x,xs) =>{
+    //             if x == e then {
+    //                 assert(!l.remove(x).contains(e))
+    //                 zzzremAllPreservesContains(l,e,xs)
+    //             }
+    //             else if e<x then{
+    //                 vsosaImplNotContain(l2,e)
+    //                 assert(!l2.contains(e))
+    //                 remDiffElemPreservesContains(l,e,x)
+    //                 assert(l.contains(e) == l.remove(x).contains(e))
+    //                 assert(!l.remove(x).contains(e))
+    //                 zzzremAllPreservesContains(l,e,xs)
+    //             }
+    //             else{
+    //                 assert(!l.remove(x).contains(e))
+    //                 zzzremAllPreservesContains(l,e,xs)
+    //             }
+    //         }
+    //     }
+    // }.ensuring(!l.removeAll(Cons(e,l2)).contains(e))
+
+    // def zzremAllImpliesNCHead(l:SortedList,l2:SortedList): Unit = {
+    //     require(l.isValid)
+    //     require(l2.isValid)
+    //     require(l2 != Nil)
+    //     val ret = l.removeAll(l2)
+    //     l2 match {
+    //         case vp.Cons(x,xs) =>{
+    //             if(!l.contains(x)) then assert(!ret.contains(x))
+    //             else assert(!ret.contains(x))
+    //         }
+    //     }
+    // }.ensuring(!l.removeAll(l2).contains(l2.head))
+
+    // def zremSuperSetImpliesNotContainSubset(l:SortedList,subset:SortedList,superset: SortedList): Unit = {
     //     //This could also have been called "removeAll is an invariant wrt subset"
     //     require(l.isValid)
     //     require(subset.isValid)
     //     require(superset.isValid)
     //     require(subset.isSubsetOf(superset)) // subset <= superset
+    //     decreases(l.size())
     
     //     val rsuper = l.removeAll(superset)
     //     val rsub   = l.removeAll(subset)
+    //     removeAllImpliesSubset(l,superset)
+    //     removeAllImpliesSubset(l,subset)
     //     superset match
     //         case vp.Cons(x, xs) =>{
-    //             if subset.contains(x) then{
-    //                 assert(!rsub.contains(x))
-    //                 assert(!rsuper.contains(x))
-    //                 remSuperSetImpliesNotContainSubset(l.remove(x),subset.remove(x),xs)
-    //             }
-    //             else{
-    //                 if l.contains(x) then assert(rsub.contains(x))
-    //             }
+    //             // remImpliesSubset(l,x)
+    //             // assert(!rsuper.contains(x))
+    //             // if subset.contains(x) then{
+
+    //             //     assert(!rsub.contains(x))
+    //             //     zremSuperSetImpliesNotContainSubset(l.remove(x),subset.remove(x),xs)
+    //             // }
+    //             // else{
+    //             //     if l.contains(x) then assert(rsub.contains(x))
+    //             // }
     //         }
-    //         case vp.Nil => 
+    //         case vp.Nil => {
+    //             assert(subset == vp.Nil)
+    //             assert(rsub == rsuper)
+    //             subsetReflexivity(l)
+    //         }
         
     // }.ensuring(l.removeAll(superset).isSubsetOf(l.removeAll(subset)))
 

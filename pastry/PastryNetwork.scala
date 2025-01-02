@@ -5,20 +5,6 @@ import stainless.annotation.*
 import stainless.collection.*
 import StainlessProperies.*
 
-// sealed trait NodeState{
-//     def is_ready(): Boolean
-// }
-
-// object NodeState{
-//     case object Synched extends NodeState{
-//         override def is_ready(): Boolean = true 
-//     }
-//     case object Dead extends NodeState{
-//         override def is_ready(): Boolean = false 
-//     }
-// }
-
-
 
 /**
     A node in a Pastry Network
