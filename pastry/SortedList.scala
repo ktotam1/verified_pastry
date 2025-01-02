@@ -239,8 +239,20 @@ sealed abstract class SortedList{
         !forall(!p(_))
     }
 
-    final def subsetSize(other: SortedList): BigInt = {
-        0
+    final def set_equals(other: SortedList):Boolean = {
+        require(other.isValid)
+        (this,other) match{
+            case (Nil,Nil) => true
+            case (Cons(x,xs),Cons(y,ys)) => x== y && xs.set_equals(ys)
+            case _ => false
+        }
+    }
+
+    override def equals(other:Any): Boolean = {
+        other match{
+            case sl: SortedList => if sl.isValid then set_equals(sl) else false
+            case _ => false
+        }
     }
 }
 case object Nil extends SortedList
@@ -341,11 +353,6 @@ object slProperties{
             }
         }
     }.ensuring(sl.contains(e))
-    
-    // def isLastOneEqualIsLast(sl: SortedList,e:Int):Unit = {
-    //     require(sl.isValid)
-    //     require(sl.size() > 0)
-    // }.ensuring((sl.last == e) == sl.isLastK(1,e) )
     def isFirstLastImpliesContains(sl:SortedList,e:Int, k: BigInt): Unit = {
         require(sl.isValid)
         require(sl.size() > 0)
@@ -446,6 +453,7 @@ object slProperties{
     def keySmallerImpliesNEQ[T](key:T=>Int, e1:T,e2:T): Unit={
         require(key(e1)<key(e2))
     }.ensuring(key(e1)!=key(e2))
+
     def validSLImpliesSet[T](sl:List[T],key:T=>Int):Unit={
         require(isvalidstainless(sl,key))
         sl match {
@@ -635,6 +643,7 @@ object slProperties{
         require(l1.isValid)
         require(l2.isValid)
         require(l1.forall(k => l2.contains(k)))
+        decreases(l2.size())
         (l1, l2) match{
             case (Nil, _) => ()
             case (Cons(x, xs), Cons(y, ys)) => {
@@ -765,6 +774,21 @@ object slProperties{
         }
     }.ensuring(l1.isSubsetOf(l3))
 
+    def subsetAntisymmetry(s1:SortedList, s2:SortedList): Unit = {
+        require(s1.isValid)
+        require(s2.isValid)
+        require(s1.isSubsetOf(s2))
+        require(s2.isSubsetOf(s1))
+        (s1,s2) match {
+            case (Nil, _) => assert( s2==Nil)
+            case (_,Nil) => assert(s1==Nil)
+            case (Cons(x,xs),Cons(y,ys)) => {
+                assert(x==y)
+                subsetAntisymmetry(xs,ys)
+            }
+        }
+    }.ensuring(s1.set_equals(s2))
+
     def removeAllImpliesSubset(l:SortedList, from:SortedList): Unit = {
         require(l.isValid)
         require(from.isValid)
@@ -790,29 +814,29 @@ object slProperties{
         }
     }.ensuring(l.removeAll(from).isSubsetOf(l))
 
-    def remSuperSetImpliesNotContainSubset(l:SortedList,subset:SortedList,superset: SortedList): Unit = {
-        //This could also have been called "removeAll is an invariant wrt subset"
-        require(l.isValid)
-        require(subset.isValid)
-        require(superset.isValid)
-        require(subset.isSubsetOf(superset)) // subset <= superset
+    // def remSuperSetImpliesNotContainSubset(l:SortedList,subset:SortedList,superset: SortedList): Unit = {
+    //     //This could also have been called "removeAll is an invariant wrt subset"
+    //     require(l.isValid)
+    //     require(subset.isValid)
+    //     require(superset.isValid)
+    //     require(subset.isSubsetOf(superset)) // subset <= superset
     
-        val rsuper = l.removeAll(superset)
-        val rsub   = l.removeAll(subset)
-        superset match
-            case vp.Cons(x, xs) =>{
-                if subset.contains(x) then{
-                    assert(!rsub.contains(x))
-                    assert(!rsuper.contains(x))
-                    remSuperSetImpliesNotContainSubset(l.remove(x),subset.remove(x),xs)
-                }
-                else{
-                    if l.contains(x) then assert(rsub.contains(x))
-                }
-            }
-            case vp.Nil => 
+    //     val rsuper = l.removeAll(superset)
+    //     val rsub   = l.removeAll(subset)
+    //     superset match
+    //         case vp.Cons(x, xs) =>{
+    //             if subset.contains(x) then{
+    //                 assert(!rsub.contains(x))
+    //                 assert(!rsuper.contains(x))
+    //                 remSuperSetImpliesNotContainSubset(l.remove(x),subset.remove(x),xs)
+    //             }
+    //             else{
+    //                 if l.contains(x) then assert(rsub.contains(x))
+    //             }
+    //         }
+    //         case vp.Nil => 
         
-    }.ensuring(l.removeAll(superset).isSubsetOf(l.removeAll(subset)))
+    // }.ensuring(l.removeAll(superset).isSubsetOf(l.removeAll(subset)))
 
     // def removeAllImpliesNotExistContain(data_to_remove: SortedList,removed_from_list: SortedList): Unit = {
     //     require(data_to_remove.isValid)
