@@ -215,7 +215,7 @@ sealed abstract class SortedList{
                 else Cons(y,this.merge(ys))  
             }
         }
-    }.ensuring((sl:SortedList)=> sl.isValid)
+    }.ensuring((sl:SortedList)=> sl.isValid && sl.size() <= (this.size() + other.size()))
 
     final def removeAll(from: SortedList): SortedList = {
         require(isValid)
@@ -1046,6 +1046,7 @@ object slProperties{
         require(l1.isValid)
         require(l2.isValid)
         require(l1.isSubsetOf(l2))
+        decreases(l1.size() + l2.size())
         l1 match{
             case Nil => {}
             case Cons(x,xs) =>{
@@ -1262,47 +1263,87 @@ object slProperties{
     //     mergeSubsetPreservation(l1.tail,l2.tail,l1.merge(l2))
     // }.ensuring(l1.tail.merge(l2.tail).isSubsetOf(l1.merge(l2)))
 
+    def tailMergeHeadIsList(l1:SortedList): Unit = {
+        require(l1.isValid)
+        require(l1!=Nil)
+        l1.tail match{
+            case Nil => {}
+            case _ =>{
+                assert(l1.head < l1.tail.head)
+                assert(l1.tail.merge(Cons(l1.head,Nil)).head == l1.head)
+                assert(l1.tail.merge(Cons(l1.head,Nil)).tail == l1.tail)
+            }
+        }
+    }.ensuring(l1.tail.merge(Cons(l1.head,Nil)) == l1)
+
+    def tailSizeSmaller(l1:SortedList): Unit = {
+        require(l1.isValid)
+        require(l1!=Nil)
+    }.ensuring(l1.tail.size() < l1.size())
+
+    def mergeSizeDecreases(l1:SortedList,l2: SortedList): Unit = {
+        require(l1.isValid)
+        require(l2.isValid)
+    }.ensuring(l1.merge(l2).size() <= (l1.size()+l2.size()))
+
     def alwaysSubsetOfMerged(l1:SortedList,l2: SortedList): Unit = {
         require(l1.isValid)
         require(l2.isValid)
-        decreases(l1.merge(l2).size())
+        decreases(l1.size() + l2.size())
         mergeCommutativity(l1,l2)
-        (l1,l1.merge(l2)) match {
+        mergeSizeDecreases(l1,l2)
+        val merged = l1.merge(l2)
+        (l1,merged) match {
             case (Nil, _) => {}
             case (Cons(x, xs), Nil) => assert(false)
-            case (Cons(x, xs), Cons(y, ys)) => {
-                assert(ys.isSubsetOf(l2))
-                if (x == y) {
-                    mergeDistributivity(l1,l2,xs)
-                    mergeDistributivity(l1,l2,xs)
-                    alwaysSubsetOfMerged(xs,ys)
-                    assert(xs.isSubsetOf(xs.merge(ys))) //  ==== xs <= xs U ys
-                    // we need 
-                    // 1) xs U ys <= l1 U l2
-                    // 2) xs+head = l1
-                    // 3) a <= b U c ==> a+e <= (bUC)+e 
-                } else if (x < y) {
-                    assert(false)
-                } else {
-                    alwaysSubsetOfMerged(l1,ys)
-                    assert(l1.isSubsetOf(l1.merge(ys))) //  ===== l1 <= l1 U ys
-                    //val smallMerge = y.merge()
-                    // we need :
-                    // 1) a U b <= a U (b+e) 
-
-                    subsetTransitivity(l1,l1.merge(ys),l1.merge(l2))
+            case (Cons(x, xs), Cons(z,zs)) => {
+                l2 match{
+                    case Nil=> {
+                        assert(l1.merge(l2) == l1)
+                        subsetReflexivity(l1)
+                    }
+                    case Cons(y,ys) =>{
+                        tailSubsetOfSelf(l2)
+                        assert(ys.isSubsetOf(l2))
+                        if (x == y) {
+                            mergeDistributivity(l1,l2,xs)
+                            mergeSizeDecreases(xs,ys)
+                            alwaysSubsetOfMerged(xs,ys)
+                            assert(xs.isSubsetOf(xs.merge(ys)))
+                        } else {
+                            mergeSizeDecreases(l1,ys)
+                            alwaysSubsetOfMerged(l1,ys)
+                            assert(l1.isSubsetOf(l1.merge(ys))) //  ===== l1 <= l1 U ys
+                            //val smallMerge = y.merge()
+                            // we need :
+                            // 1) a U b <= a U (b+e) 
+                            mergeOnePreservesSubset(l1,l1.merge(ys),y)
+                            assert(l1.isSubsetOf(l1.merge(ys).merge(Cons(y,Nil))))
+                            mergeDistributivityOne(l1,ys,Cons(y,Nil))
+                            assert(l1.merge(ys).merge(Cons(y,Nil)) == l1.merge(ys.merge(Cons(y,Nil))))
+                            assert(l1.isSubsetOf(l1.merge(ys.merge(Cons(y,Nil)))))
+                            tailMergeHeadIsList(l2)
+                            assert(ys.merge(Cons(y,Nil)) == l2)
+                            assert(l1.isSubsetOf(l1.merge(l2)))
+                        }
+                    }
                 }
             }
         }
 
     }.ensuring(l1.isSubsetOf(l1.merge(l2)))
 
-    def mergeImplForAllContains(l1: SortedList, l2: SortedList): Unit = {
+    @library
+    def alwaysSubsetOfMergedForAllContains(l1: SortedList, l2: SortedList): Unit = {
         require(l1.isValid)
         require(l2.isValid)
-        decreases(l1.size()+l2.size())
-        //alwaysSubsetOfMerged(l1,l2)
-        subsetContainAll(l1,l1.merge(l2))
+        alwaysSubsetOfMerged(l1,l2)
+        assert(l1.isSubsetOf(l1.merge(l2)))
+        subsetContainAll(l1,l1.merge(l2)) 
+        // The following proves the theorem, but because of
+        // the predicate name substitution issue, it cannot be inferred
+        // by stainless. We therefore take the liberty of marking this as @library
+        assert(l1.forall(k => l1.merge(l2).contains(k)))
     }.ensuring(l1.forall(k => l1.merge(l2).contains(k)))
 
     def forallPredSubst(l:SortedList,p:Int=>Boolean) : Unit = {
@@ -1395,8 +1436,10 @@ object slProperties{
 
     @library
     def forAllNameSubstitution(l1:SortedList,l2:SortedList,l3:SortedList): Unit ={
-        //We have not managed to prove the Cons(x,xs) case of the match this as it -- we would need some sort of stainless annotation
-        // to be able to tell stainless to treat lambda equality as function proofs
+        //We have not managed to prove the Cons(x,xs) case of the match  -- we would need some sort of stainless annotation
+        // to be able to tell stainless to treat lambda equality as function proofs, so that it can substitute the names itself
+        // aka - to provide name substitution, we would need... name substitution support from stainless
+        // we think this is unprovable
         require(l1.isValid)
         require(l2.isValid)
         require(l3 == l1.merge(l2))
@@ -1456,17 +1499,6 @@ object slProperties{
             }
         }
     }.ensuring(l1.forall(k => l3.contains(k)))
-
-    def mergePreserveSubset(l1:SortedList,l2:SortedList): Unit = {
-        require(l1.isValid)
-        require(l2.isValid)
-        mergeImplForAllContains(l1,l2)
-        assert(l1.forall(k => l1.merge(l2).contains(k)))
-        val l3 = l1.merge(l2)
-        forAllNameSubstitution(l1,l2,l3)
-        assert(l1.forall(k => l3.contains(k)))
-        forallContainsSubset(l1,l3)
-    }.ensuring(l1.isSubsetOf(l1.merge(l2)))
 
     // def zzzzzzremAllSubsetOfRem(l:SortedList,e:Int,l2:SortedList): Unit ={
     //     require(l.isValid)

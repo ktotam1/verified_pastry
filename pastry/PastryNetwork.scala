@@ -210,12 +210,12 @@ object PastryProps{
         
         val built = start.remove_from_ls_and_replace(dropped_node,replacement,to)
         if !to then{
-            assert(built.leafset_data == start.leafset_data.merge(replacement.own_data))
-            assert(built.leafset_data.isSubsetOf(start.leafset_data))
+            assert(built.own_data == start.own_data)
+            subsetReflexivity(start.own_data)
         }
         else{
-            assert(built.leafset_data == start.leafset_data.merge(replacement.own_data).removeAll(dropped_node.own_data))
-            assert(built.leafset_data.isSubsetOf(start.leafset_data))
+            assert(built.own_data == start.own_data.merge(dropped_node.own_data))
+            mergeSubsetPreservation(start.own_data)
         }
     }.ensuring(start.own_data.isSubsetOf(start.remove_from_ls_and_replace(dropped_node,replacement,to).owd_data))
 
