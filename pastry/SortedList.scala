@@ -124,7 +124,7 @@ sealed abstract class SortedList{
             case Cons(x, xs) if (x == e) => xs
             case Cons(x, xs) if (x != e) => Cons(x, xs.remove(e))
         }
-    }.ensuring(_.isValid)
+    }.ensuring((sl:SortedList)=> sl.isValid && sl.size() <= this.size())
 
     final def drop(i: Int): SortedList ={
         require(isValid)
@@ -217,14 +217,30 @@ sealed abstract class SortedList{
         }
     }.ensuring((sl:SortedList)=> sl.isValid && sl.size() <= (this.size() + other.size()))
 
-    final def removeAll(from: SortedList): SortedList = {
+    // final def removeAll(from: SortedList): SortedList = {
+    //     require(isValid)
+    //     require(from.isValid)
+    //     from match{
+    //         case Nil => this
+    //         case Cons(x,xs) => remove(x).removeAll(xs)
+    //     }
+    // }.ensuring((sl:SortedList)=> sl.isValid)
+
+    final def removeAll(other: SortedList): SortedList = {
         require(isValid)
-        require(from.isValid)
-        from match{
-            case Nil => this
-            case Cons(x,xs) => remove(x).removeAll(xs)
+        require(other.isValid)
+        (this,other) match{
+            case (Nil,o) => Nil
+            case (t,Nil) => t
+            case (Cons(x,xs),Cons(y,ys)) =>{
+                assert(xs.isValid)
+                assert(ys.isValid)
+                if x == y then xs.removeAll(ys)
+                else if (x < y) then Cons(x,xs.removeAll(other))
+                else this.removeAll(ys)
+            }
         }
-    }.ensuring(ret => ret.isValid)
+    }.ensuring((sl:SortedList)=> sl.isValid && (sl == Nil || this.head <= sl.head) && sl.size() <= this.size())
 
     final def forall(p:Int=>Boolean): Boolean={
         require(isValid)
@@ -824,9 +840,98 @@ object slProperties{
         }
     }.ensuring(s1.set_equals(s2))
 
+    def removeAllNilIsNil(l1:SortedList):Unit = {
+        require(l1.isValid)
+        val res = Nil.removeAll(l1)
+        l1 match{
+            case Nil => {}
+            case Cons(x,xs) =>{
+                assert(Nil.remove(x) == Nil)
+                removeAllNilIsNil(xs)
+            }
+        }
+    }.ensuring(Nil.removeAll(l1) == Nil)
+
+    def removeNilIsOriginal(l1:SortedList): Unit = {
+        require(l1.isValid)
+    }.ensuring(l1.removeAll(Nil) == l1)
+
+    def removeSmallerIsNOP(l:SortedList,e:Int) : Unit = {
+        require(l.isValid)
+        require(l!=Nil)
+        require(e<l.head)
+        l match{
+            case Cons(x,Nil) => {
+                assert(e<x)
+                assert(l.remove(e) == l)
+            }
+            case Cons(x,xs) =>{
+                assert(e<x)
+                removeSmallerIsNOP(xs,e)
+            }
+        }
+    }.ensuring(l.remove(e) == l)
+
+    def removeAllIneligibleHeadTraverses(l1:SortedList,l2:SortedList): Unit = {
+        require(l1.isValid)
+        require(l2.isValid)
+        require(l2!=Nil)
+        require(l1!=Nil)
+        require(l2.head < l1.head)
+        // (l1,l2) match{
+        //     case(Cons(x,Nil),_) =
+        // }
+    }.ensuring(l1.removeAll(l2) == l1.removeAll(l2.tail))
+
+    def remHeadRemAllTailEquivRemAll(l1:SortedList, l2:SortedList): Unit = {
+        require(l1.isValid)
+        require(l2.isValid)
+        require(l2 != Nil)
+        decreases(l1.size()+l2.size())
+        val lhs_1 = l1.remove(l2.head)
+        val lhs_2 = lhs_1.removeAll(l2.tail)
+        val rhs = l1.removeAll(l2)
+
+        (l1,l2) match{
+            case (Nil,_) =>{
+                assert(lhs_1 == Nil)
+                removeAllNilIsNil(lhs_1)
+                assert(lhs_2 == Nil)
+                assert(rhs == Nil)
+            }
+            case (Cons(x,xs),Cons(y,ys))=>{
+                if x == y then {
+                    ys match{
+                        case Nil => {
+                            assert(rhs == xs.removeAll(Nil))
+                            removeNilIsOriginal(xs)
+                            assert(rhs == xs)
+                            assert(lhs_1 == xs)
+                            assert(lhs_2 == xs)
+                        }
+                        case Cons(yy,yys) => {} 
+                    }
+                }
+                else if (x < y) then {
+                    assert(rhs == Cons(x,xs.removeAll(l2)))
+                    remHeadRemAllTailEquivRemAll(xs,l2)
+                    assert(xs.removeAll(l2) == xs.remove(y).removeAll(ys))
+                    assert(rhs == Cons(x,xs.remove(y).removeAll(ys)))
+                    assert(lhs_2 == Cons(x,xs.remove(y).removeAll(ys)))
+                }
+                else {
+                    assert(x>y)
+                    removeSmallerIsNOP(l1,l2.head)
+                    assert(lhs_1 == l1)
+                }
+            }
+        }
+    }.ensuring(l1.remove(l2.head).removeAll(l2.tail) == l1.removeAll(l2))
+
     def removeAllImpliesSubset(l:SortedList, from:SortedList): Unit = {
         require(l.isValid)
         require(from.isValid)
+        decreases(l.size() + from.size())
 
         from match {
             case Nil => subsetReflexivity(l)
@@ -843,7 +948,8 @@ object slProperties{
                 // we want mid.removeAll(xs).isSubsetOf(l)
                 // so we need lem1 and lem2 and transitivity
                 subsetTransitivity(mid.removeAll(xs), mid, l)
-
+                assert(mid.removeAll(xs).isSubsetOf(l))
+                remHeadRemAllTailEquivRemAll(l,from)
                 assert(mid.removeAll(xs) == ret)
             }
         }
@@ -887,48 +993,275 @@ object slProperties{
 
     }.ensuring(l.contains(e1) == l.remove(e2).contains(e1))
 
-    @library
+    def removeAllDistributivityOne(l1: SortedList, l2: SortedList, l3: SortedList): Unit = {
+        require(l1.isValid)
+        require(l2.isValid)
+        require(l3.isValid)
+        decreases(l1.size() + l2.size() + l3.size())
+    
+        val lhs_1 = l1.removeAll(l2)
+        val lhs_2 = lhs_1.removeAll(l3)
+    
+        val rhs_1 = l1.removeAll(l3)
+        val rhs_2 = rhs_1.removeAll(l2)
+        
+        removeAllNilIsNil(l1)
+        removeAllNilIsNil(l2)
+        removeAllNilIsNil(l3)
+        removeAllNilIsNil(lhs_1)
+        removeAllNilIsNil(rhs_1)
+        removeNilIsOriginal(l1)
+        removeNilIsOriginal(l2)
+        removeNilIsOriginal(l3)
+        removeNilIsOriginal(lhs_1)
+        removeNilIsOriginal(rhs_1)
+
+        (l1, l2, l3) match {
+            case (Nil, _, _) => {
+                assert(lhs_1 == Nil)
+                assert(lhs_2 == Nil)
+                assert(rhs_1 == Nil)
+                assert(rhs_2 == Nil)
+                assert(lhs_2 == rhs_2)
+            }
+            case (_, Nil, Nil) => {
+                assert(lhs_1 == l1)
+                assert(lhs_2 == l1)
+                assert(rhs_1 == l1)
+                assert(rhs_2 == l1)
+                assert(lhs_2 == rhs_2)
+            }
+            case (Cons(x, xs), Cons(y, ys), Cons(z, zs)) => {
+                if (x < y && x < z) {
+                    assert(lhs_1 == Cons(x, xs.removeAll(l2)))
+                    assert(lhs_2 == Cons(x, xs.removeAll(l2).removeAll(l3)))
+                    assert(rhs_1 == Cons(x, xs.removeAll(l3)))
+                    assert(rhs_2 == Cons(x, xs.removeAll(l3).removeAll(l2)))
+                    removeAllDistributivityOne(xs, l2, l3)
+                    assert(lhs_2 == rhs_2)
+                }
+                else if (y < x && y < z) {
+                    assert(lhs_1 == l1.removeAll(ys))
+                    assert(rhs_1 == l1.removeAll(l3))
+                    removeAllDistributivityOne(l1, ys, l3)
+                    assert(lhs_2 == rhs_2)
+                }
+                else if (z < x && z < y) {
+                    assert(rhs_1 == l1.removeAll(zs))
+                    removeAllDistributivityOne(l1, l2, zs)
+                    assert(lhs_2 == rhs_2)
+                }
+                else if (x == y && x == z) {
+                    assert(lhs_1 == xs.removeAll(ys))
+                    assert(lhs_2 == xs.removeAll(ys).removeAll(l3))
+                    assert(rhs_1 == xs.removeAll(zs))
+                    assert(rhs_2 == xs.removeAll(zs).removeAll(l2))
+                    removeAllDistributivityOne(xs, ys, zs)
+                    assert(lhs_2 == rhs_2)
+                }
+                else if (x == y) {
+                    assert(lhs_1 == xs.removeAll(ys))
+                    assert(lhs_2 == xs.removeAll(ys).removeAll(l3))
+                    removeAllDistributivityOne(xs, ys, l3)
+                    assert(lhs_2 == rhs_2)
+                }
+                else if (x == z) {
+                    assert(rhs_1 == xs.removeAll(zs))
+                    assert(rhs_2 == xs.removeAll(zs).removeAll(l2))
+                    removeAllDistributivityOne(xs, l2, zs)
+                    assert(lhs_2 == rhs_2)
+                }
+                else if (y == z) {
+                    removeAllDistributivityOne(l1, ys, zs)
+                    assert(lhs_2 == rhs_2)
+                }
+            }
+            case (Cons(x, xs), Nil, Cons(z, zs)) => {
+                if (x < z) {
+                    assert(lhs_1 == Cons(x, xs))
+                    assert(lhs_2 == Cons(x, xs.removeAll(l3)))
+                    assert(rhs_1 == Cons(x, xs.removeAll(l3)))
+                    assert(rhs_2 == Cons(x, xs.removeAll(l3)))
+                    assert(lhs_2 == rhs_2)
+                }
+                else if (x == z) {
+                    removeAllDistributivityOne(xs, Nil, zs)
+                    assert(lhs_2 == rhs_2)
+                }
+                else {
+                    removeAllDistributivityOne(l1, Nil, zs)
+                    assert(lhs_2 == rhs_2)
+                }
+            }
+            case (Cons(x, xs), Cons(y, ys), Nil) => {
+                if (x < y) {
+                    assert(lhs_1 == Cons(x, xs.removeAll(l2)))
+                    assert(lhs_2 == Cons(x, xs.removeAll(l2)))
+                    assert(rhs_1 == Cons(x, xs))
+                    assert(rhs_2 == Cons(x, xs.removeAll(l2)))
+                    assert(lhs_2 == rhs_2)
+                }
+                else if (x == y) {
+                    removeAllDistributivityOne(xs, ys, Nil)
+                    assert(lhs_2 == rhs_2)
+                }
+                else {
+                    removeAllDistributivityOne(l1, ys, Nil)
+                    assert(lhs_2 == rhs_2)
+                }
+            }
+        }
+    }.ensuring(l1.removeAll(l2).removeAll(l3) == l1.removeAll(l3).removeAll(l2))
+    
     def removeMoreSubsetOfRemoveLess(l1:SortedList,l2:SortedList,x:Int): Unit = {
         require(l1.isValid)
         require(l2.isValid)
         require(Cons(x,l2).isValid)
-        assert(!l2.contains(x))
+        
+        l1 match {
+            case Nil => {
+                assert(l1.removeAll(Cons(x,l2)) == Nil)
+                assert(l1.removeAll(l2) == Nil)
+                assert(Nil.isSubsetOf(Nil))
+            }
+            case Cons(y, ys) => {
+                if (y < x) {
+                    assert(l1.removeAll(Cons(x,l2)) == Cons(y, ys.removeAll(Cons(x,l2))))
+                    assert(l1.removeAll(l2) == Cons(y, ys.removeAll(l2)))
+                    removeMoreSubsetOfRemoveLess(ys, l2, x)
+                    assert(ys.removeAll(Cons(x,l2)).isSubsetOf(ys.removeAll(l2)))
+                }
+                else if (y == x) {
+                    assert(l1.removeAll(Cons(x,l2)) == ys.removeAll(Cons(x,l2)))
+                    assert(l1.removeAll(l2) == Cons(y, ys.removeAll(l2)))
+                    removeMoreSubsetOfRemoveLess(ys, l2, x)
+                    assert(ys.removeAll(Cons(x,l2)).isSubsetOf(Cons(y, ys.removeAll(l2))))
+                }
+                else {
+                    assert(l1.removeAll(Cons(x,l2)) == l1.removeAll(l2))
+                    subsetReflexivity(l1.removeAll(l2))
+                }
+            }
+        }
     }.ensuring(l1.removeAll(Cons(x,l2)).isSubsetOf(l1.removeAll(l2)))
 
-    // def remSuperSetImpliesNotContainSubset(l:SortedList,subset:SortedList,superset: SortedList): Unit = {
-    //     //This could also have been called "removeAll is an invariant wrt subset"
-    //     require(l.isValid)
-    //     require(subset.isValid)
-    //     require(superset.isValid)
-    //     require(subset.isSubsetOf(superset)) // subset <= superset
-    //     decreases(l.size())
+    def removeAllContainsEventually(x: Int, l: SortedList, superset: SortedList): Unit = {
+        require(l.isValid)
+        require(superset.isValid)
+        require(superset.contains(x))
+        require(Cons(x,l).isValid)
+        decreases(superset.size())
     
-    //     val rsuper = l.removeAll(superset)
-    //     val rsub   = l.removeAll(subset)
-    //     removeAllImpliesSubset(l,superset)
-    //     removeAllImpliesSubset(l,subset)
-    //     superset match
-    //         case vp.Cons(x, xs) =>{
-    //             remImpliesSubset(l,x)
-    //             assert(!rsuper.contains(x))
-    //             removeMoreSubsetOfRemoveLess(l,xs,x)
-    //             // if subset.contains(x) then{
+        superset match {
+            case Nil => {}
+            case Cons(z, zs) => {
+                if (x == z) {
+                    assert(l.removeAll(superset) == l.removeAll(Cons(x, zs)))
+                }
+                else if (x > z) {
+                    removeAllContainsEventually(x, l, zs)
+                    assert(l.removeAll(superset) == l.removeAll(zs))
+                }
+                else {
+                    assert(x<z)
+                    vsosaImplNotContain(superset,x)    
+                }
+            }
+        }
+    }.ensuring(Cons(x, l).removeAll(superset) == l.removeAll(superset))
+    
+    def subContImplSupCont(subset:SortedList,superset: SortedList,e:Int): Unit = {
+        require(subset.isValid)
+        require(superset.isValid)
+        require(subset.contains(e))
+        require(subset.isSubsetOf(superset))
+        decreases(subset.size()+superset.size())
+        assert(subset != Nil)
+        assert(superset != Nil)
+        (superset,subset) match{
+            case (Nil,_) => assert(false)
+            case (_,Nil) => assert(false)
+            case (Cons(x,xs),Cons(y,ys)) => {
+                if x==y then {
+                    if(x == e) then {}
+                    else subContImplSupCont(ys,xs,e)
+                }
+                else if x<y then {
+                    if(e == y) then{
+                        assert(x!=y)
+                        subContImplSupCont(subset,xs,e)
+                    }
+                    else{
+                        subContImplSupCont(subset,xs,e)
+                    }
+                }
+                else assert(false)
+            }
+        }
+    }.ensuring(superset.contains(e))
 
-    //             //     assert(!rsub.contains(x))
-    //             //     zremSuperSetImpliesNotContainSubset(l.remove(x),subset.remove(x),xs)
-    //             // }
-    //             // else{
-    //             //     if l.contains(x) then assert(rsub.contains(x))
-    //             // }
-    //         }
-    //         case vp.Nil => {
-    //             assert(subset == vp.Nil)
-    //             assert(rsub == rsuper)
-    //             subsetReflexivity(l)
-    //         }
-        
-    // }.ensuring(l.removeAll(superset).isSubsetOf(l.removeAll(subset)))
+    def remSuperSetImpliesNotContainSubset(l:SortedList,subset:SortedList,superset: SortedList): Unit = {
+        require(l.isValid)
+        require(subset.isValid)
+        require(superset.isValid)
+        require(subset.isSubsetOf(superset)) // subset <= superset
+        decreases(l.size()+subset.size()+superset.size())
 
+        (l, subset, superset) match {
+            case (Nil, _, _) => {
+                assert(l.removeAll(superset) == Nil)
+                assert(l.removeAll(subset) == Nil)
+                subsetReflexivity(Nil)
+            }
+            case (Cons(x, xs), Nil, _) => {
+                assert(l.removeAll(subset) == l)
+                removeAllImpliesSubset(l,superset)
+                assert(l.removeAll(superset).isSubsetOf(l))
+            }
+            case (Cons(x, xs), Cons(y, ys), Cons(z, zs)) => {
+                if (x < y && x < z) {
+                    assert(l.removeAll(superset) == Cons(x, xs.removeAll(superset)))
+                    assert(l.removeAll(subset) == Cons(x, xs.removeAll(subset)))
+                    remSuperSetImpliesNotContainSubset(xs, subset, superset)
+                }
+                else if (x == y) {
+                    subsetReflexivity(subset)
+                    leftTailSubset(subset,subset)
+                    assert(subset.tail.isSubsetOf(subset))
+                    subsetTransitivity(subset.tail,subset,superset)
+                    remSuperSetImpliesNotContainSubset(xs, ys, superset)
+                    assert(xs.removeAll(superset).isSubsetOf(xs.removeAll(ys)))
+                    assert(l.removeAll(subset) == xs.removeAll(ys)) 
+                    assert(subset.contains(x))
+                    subContImplSupCont(subset,superset,x)
+                    assert(superset.contains(x))
+                    removeAllContainsEventually(x,xs,superset)
+                    assert(l.removeAll(superset) == xs.removeAll(superset))
+                    assert(l.removeAll(superset).isSubsetOf(l.removeAll(subset)))
+                }
+                else if (x == z) {
+                    assert(l.removeAll(superset) == xs.removeAll(superset))
+                    assert(l.removeAll(subset) == Cons(x, xs.removeAll(subset)))
+                    remSuperSetImpliesNotContainSubset(xs, subset, zs)
+                }
+                else if (y < z) {
+                    remSuperSetImpliesNotContainSubset(l, ys, superset)
+                }
+                else if (y == z) {
+                    remSuperSetImpliesNotContainSubset(l, ys, zs)
+                }
+                else {
+                    remSuperSetImpliesNotContainSubset(l, subset, zs)
+                }
+            }
+            case (Cons(x, xs), _, Nil) => {
+                assert(subset == Nil) 
+                assert(l.removeAll(subset) == l)
+                assert(l.removeAll(superset).isSubsetOf(l))
+            }
+        }
+    }.ensuring(l.removeAll(superset).isSubsetOf(l.removeAll(subset)))
+    
     def remdAllSubsetOfRemHead(l1:SortedList,l2:SortedList,l3:SortedList,h:Int): Unit ={
         // If somehow l1.removeAll(l2) is a subset of some list l3
         // then l1.removeAll(Cons(h,l2)) is a subset of some list l3
@@ -974,6 +1307,7 @@ object slProperties{
     def mergeCommutativity(l1:SortedList,l2: SortedList): Unit = {
         require(l1.isValid)
         require(l2.isValid)
+        decreases(l1.size() + l2.size())
 
         val lhs = l1.merge(l2)
         val rhs = l2.merge(l1)
@@ -1237,15 +1571,14 @@ object slProperties{
        mergeDistributivityOne(l2,l1,l3)
        mergeDistributivityOne(l1,l3,l2)
        mergeDistributivityOne(l3,l2,l1)
-   }.ensuring(
+    }.ensuring(
        l1.merge(l2).merge(l3) == l1.merge(l2.merge(l3)) &&
        l2.merge(l1).merge(l3) == l1.merge(l2.merge(l3)) &&
        l2.merge(l3).merge(l1) == l2.merge(l3.merge(l1)) &&
        l1.merge(l3).merge(l2) == l1.merge(l3.merge(l2)) &&
        l3.merge(l1).merge(l2) == l3.merge(l1.merge(l2)) &&
        l3.merge(l2).merge(l1) == l3.merge(l2.merge(l1))
-   )
-
+    )
 
     // def tailMergeSubOfParentMerge(l1:SortedList,l2: SortedList): Unit = {
     //     require(l1.isValid)

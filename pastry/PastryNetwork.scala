@@ -215,9 +215,9 @@ object PastryProps{
         }
         else{
             assert(built.own_data == start.own_data.merge(dropped_node.own_data))
-            mergeSubsetPreservation(start.own_data)
+            alwaysSubsetOfMerged(start.own_data,dropped_node.own_data)
         }
-    }.ensuring(start.own_data.isSubsetOf(start.remove_from_ls_and_replace(dropped_node,replacement,to).owd_data))
+    }.ensuring(start.own_data.isSubsetOf(start.remove_from_ls_and_replace(dropped_node,replacement,to).own_data))
 
     def nodeBuiltFromRemoveIsValid(start:PastryNode,dropped_node:PastryNode,replacement:PastryNode,to: Boolean): Unit = {
         require(start.isValid)
@@ -236,17 +236,24 @@ object PastryProps{
         assert(built.leafset.size() == start.l)
         assert(built.leafset.isValid)
         assert(built.routingTable.isValid)
+        startDataisSubsetOfnbfrData(start,dropped_node,replacement,to)
         assert(start.own_data.isSubsetOf(built.own_data))
+
         if !to then{
             assert(built.own_data == start.own_data)
             assert(built.leafset_data == start.leafset_data.merge(replacement.own_data))
             assert(!built.own_data.exists(k=>start.leafset_data.contains(k))) // follows from isValid
-            
+            assert(!built.own_data.exists(k=>replacement.own_data.contains(k))) // from require
+            //Therefore we have that !E k in a :  b.contains(k)
+            //                   and !E k in a :  c.contains(k)
+            //
+
             assert(!built.own_data.exists(k=>built.leafset_data.contains(k)))
         }
         else{
             assert(built.own_data == start.own_data.merge(dropped_node.own_data))
             assert(built.leafset_data == start.leafset_data.merge(replacement.own_data).removeAll(dropped_node.own_data))
+            assert(!built.own_data.exists(k=>built.leafset_data.contains(k)))
         }
         assert(!built.own_data.exists(k=>built.leafset_data.contains(k)))
     }.ensuring(start.remove_from_ls_and_replace(dropped_node,replacement,to).isValid)
