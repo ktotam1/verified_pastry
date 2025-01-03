@@ -257,6 +257,7 @@ sealed abstract class SortedList{
         }
     }
 
+    @library
     final def intersect(other:SortedList): SortedList = {
         require(isValid)
         require(other.isValid)
@@ -281,6 +282,12 @@ sealed abstract class SortedList{
             }
         }
     }.ensuring((ret:SortedList) => ret.isValid)
+
+    final def subsetSize(other: SortedList): BigInt = {
+        require(isValid)
+        require(other.isValid)
+        intersect(other).size()
+    }
 }
 case object Nil extends SortedList
 case class Cons(x: Int, xs: SortedList) extends SortedList
@@ -331,10 +338,6 @@ object StainlessProperies{
         }
         innerIUWRT(vp.Nil,l)
     }
-
-    def zsetProp(l1: Set[Int],l2: Set[Int],x: Int):Unit = {
-        require(!l2.contains(x))
-    }.ensuring((l1 -- (l2+x)).subsetOf(l1--l2))
 }
 
 @ghost
@@ -884,13 +887,47 @@ object slProperties{
 
     }.ensuring(l.contains(e1) == l.remove(e2).contains(e1))
 
-    def zzzzzzzzremoveMoreSubsetOfRemoveLess(l1:SortedList,l2:SortedList,x:Int): Unit = {
+    @library
+    def removeMoreSubsetOfRemoveLess(l1:SortedList,l2:SortedList,x:Int): Unit = {
         require(l1.isValid)
         require(l2.isValid)
         require(Cons(x,l2).isValid)
         assert(!l2.contains(x))
-        zsetProp(l1.content(),l2.content(),x)
     }.ensuring(l1.removeAll(Cons(x,l2)).isSubsetOf(l1.removeAll(l2)))
+
+    // def remSuperSetImpliesNotContainSubset(l:SortedList,subset:SortedList,superset: SortedList): Unit = {
+    //     //This could also have been called "removeAll is an invariant wrt subset"
+    //     require(l.isValid)
+    //     require(subset.isValid)
+    //     require(superset.isValid)
+    //     require(subset.isSubsetOf(superset)) // subset <= superset
+    //     decreases(l.size())
+    
+    //     val rsuper = l.removeAll(superset)
+    //     val rsub   = l.removeAll(subset)
+    //     removeAllImpliesSubset(l,superset)
+    //     removeAllImpliesSubset(l,subset)
+    //     superset match
+    //         case vp.Cons(x, xs) =>{
+    //             remImpliesSubset(l,x)
+    //             assert(!rsuper.contains(x))
+    //             removeMoreSubsetOfRemoveLess(l,xs,x)
+    //             // if subset.contains(x) then{
+
+    //             //     assert(!rsub.contains(x))
+    //             //     zremSuperSetImpliesNotContainSubset(l.remove(x),subset.remove(x),xs)
+    //             // }
+    //             // else{
+    //             //     if l.contains(x) then assert(rsub.contains(x))
+    //             // }
+    //         }
+    //         case vp.Nil => {
+    //             assert(subset == vp.Nil)
+    //             assert(rsub == rsuper)
+    //             subsetReflexivity(l)
+    //         }
+        
+    // }.ensuring(l.removeAll(superset).isSubsetOf(l.removeAll(subset)))
 
     def remdAllSubsetOfRemHead(l1:SortedList,l2:SortedList,l3:SortedList,h:Int): Unit ={
         // If somehow l1.removeAll(l2) is a subset of some list l3
@@ -901,9 +938,535 @@ object slProperties{
         require(Cons(h,l2).isValid)
         require(l1.removeAll(l2).isSubsetOf(l3))
 
-        zzzzzzzzremoveMoreSubsetOfRemoveLess(l1,l2,h)
+        removeMoreSubsetOfRemoveLess(l1,l2,h)
         subsetTransitivity(l1.removeAll(Cons(h,l2)),l1.removeAll(l2),l3)
     }.ensuring(l1.removeAll(Cons(h,l2)).isSubsetOf(l3))
+
+
+    def forAllContainsSelf(l: SortedList): Unit = {
+        require(l.isValid)
+        subsetReflexivity(l)
+        l match {
+            case Nil => {
+                assert(l.forall(k => l.contains(k)))
+            }
+            case Cons(x, xs) => {
+                forAllContainsSelf(xs)
+                subsetContainAll(xs,l)
+                assert(xs.forall(k=>xs.contains(k)))
+                assert(l.contains(x))
+                assert(l.forall(k => l.contains(k)))
+            }
+        }
+    }.ensuring(l.forall(k => l.contains(k)))
+
+    def tailSubsetOfSelf(l1:SortedList): Unit ={
+        require(l1.isValid)
+        require(l1!=Nil)
+        l1 match{
+            case Cons(x,Nil)=>{}
+            case Cons(x,xs) => {
+                tailSubsetOfSelf(xs)
+            }
+        }
+    }.ensuring(l1.tail.isSubsetOf(l1))
+
+    def mergeCommutativity(l1:SortedList,l2: SortedList): Unit = {
+        require(l1.isValid)
+        require(l2.isValid)
+
+        val lhs = l1.merge(l2)
+        val rhs = l2.merge(l1)
+
+        (l1,l2) match {
+            case (Nil,_) => {
+                assert(lhs == l2)
+                assert(rhs == l2)
+                assert(l1.merge(l2) == l2.merge(l1))
+            }
+            case (_,Nil) => {
+                assert(lhs == l1)
+                assert(rhs == l1)
+                assert(l1.merge(l2) == l2.merge(l1))
+            }
+            case (Cons(x,xs),Cons(y,ys)) => {
+                if x == y then {
+                    assert(lhs == Cons(x,xs.merge(ys)))
+                    assert(rhs == Cons(y,ys.merge(xs)))
+                    mergeCommutativity(xs,ys)
+                    assert(xs.merge(ys) == ys.merge(xs))
+                    assert(Cons(x,xs.merge(ys)) ==  Cons(y,ys.merge(xs)))
+                    assert(lhs == rhs)
+                }
+                else if (x < y) then {
+                    assert(lhs == Cons(x,xs.merge(l2)))
+                    assert(rhs == Cons(x,l2.merge(xs)))
+                    mergeCommutativity(xs,l2)
+                    assert(xs.merge(l2) == l2.merge(xs))
+                    assert(Cons(x,xs.merge(l2)) ==  Cons(x,l2.merge(xs)))
+                    assert(lhs == rhs)
+                }
+                else {
+                    assert(lhs == Cons(y,l1.merge(ys)))
+                    assert(rhs == Cons(y,ys.merge(l1)))
+                    mergeCommutativity(l1,ys)
+                    assert(l1.merge(ys) == ys.merge(l1))
+                    assert(Cons(y,l1.merge(ys)) ==  Cons(y,ys.merge(l1)))
+                    assert(lhs == rhs)
+                }
+            }
+        }
+    }.ensuring(l1.merge(l2) == l2.merge(l1))
+
+    def eSmallerHeadAndMergedImplSmallerThanHead(e:Int,l1:SortedList,l2: SortedList): Unit={
+        require(l1.isValid)
+        require(l2.isValid)
+        require(l1!=Nil)
+        require(l2!=Nil)
+        require(e<l1.head)
+        require(e<l2.head)
+    }.ensuring(e < l1.merge(l2).head)
+
+    def mergeOneSmallerPreservesSubset(l1:SortedList,l2: SortedList,e:Int): Unit = {
+        require(l1.isValid)
+        require(l2.isValid)
+        require(l1.isSubsetOf(l2))
+        require(l1!=Nil)
+        require(l2!=Nil)
+        require(e<l2.head)
+        mergeCommutativity(l2,Cons(e,Nil))
+        tailSubsetOfSelf(Cons(e,Nil).merge(l2))
+        assert(l2.isSubsetOf(Cons(e,Nil).merge(l2)))
+        subsetTransitivity(l1,l2,Cons(e,Nil).merge(l2))
+        assert(l1.isSubsetOf(Cons(e,Nil).merge(l2)))
+        assert(l1.isSubsetOf(l2.merge(Cons(e,Nil))))
+    }.ensuring(l1.isSubsetOf(l2.merge(Cons(e,Nil))))
+
+    def mergeOnePreservesSubset(l1:SortedList,l2: SortedList,e:Int): Unit = {
+        require(l1.isValid)
+        require(l2.isValid)
+        require(l1.isSubsetOf(l2))
+        l1 match{
+            case Nil => {}
+            case Cons(x,xs) =>{
+                l2 match{
+                    case Nil => assert(l1 == Nil)
+                    case Cons(y,ys) =>{
+                        if e<y then mergeOneSmallerPreservesSubset(l1,l2,e)
+                        else if y==e then {
+                            
+                        }
+                        else{
+                            assert(y<e)
+                            val mrgd = l2.merge(Cons(e,Nil))
+                            assert(mrgd.head == y)
+                            if y == x then {
+                                if(xs == Nil) then {}
+                                else{
+                                    assert(mrgd.head == x)
+                                    mergeOnePreservesSubset(xs,ys,e)
+                                    assert(xs.isSubsetOf(l2.tail.merge(Cons(e,Nil))))
+                                    eSmallerHeadAndMergedImplSmallerThanHead(y,l2.tail,Cons(e,Nil))
+                                    mergeOneSmallerPreservesSubset(xs,l2.tail.merge(Cons(e,Nil)),y)  
+                                }
+                            }
+                            else{
+                                //simply go right :)
+                                mergeOnePreservesSubset(l1,ys,e)
+                                assert(l1.isSubsetOf(l2.tail.merge(Cons(e,Nil))))
+                                eSmallerHeadAndMergedImplSmallerThanHead(y,l2.tail,Cons(e,Nil))
+                                mergeOneSmallerPreservesSubset(l1,l2.tail.merge(Cons(e,Nil)),y)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }.ensuring(l1.isSubsetOf(l2.merge(Cons(e,Nil))))
+
+    def mergeOneImplContains(l1:SortedList,e:Int):Unit = {
+        require(l1.isValid)
+        l1 match{
+            case Nil => {
+                assert(l1.merge(Cons(e,Nil)) == Cons(e,Nil))
+            }
+            case Cons(x,xs) => {
+                if (x == e) then {}
+                else mergeOneImplContains(xs,e)
+            }
+        }
+    }.ensuring(l1.merge(Cons(e,Nil)).contains(e))
+
+    def mergeLeftRightPreservesSubsetTrivial(l: SortedList,e:Int): Unit={
+        require(l.isValid)
+        val cons = Cons(e,Nil)
+        val mrg = l.merge(cons)
+        l match{
+            case Nil => {
+                assert(mrg == cons)
+                subsetReflexivity(cons)
+            }
+            case Cons(x,xs) => {
+                if x == e then {
+                    assert(mrg == l)
+                    assert(l.contains(e))
+                }
+                else{
+                    mergeLeftRightPreservesSubsetTrivial(xs,e)
+                }
+            }
+        }
+    }.ensuring(Cons(e,Nil).isSubsetOf(l.merge(Cons(e,Nil))))
+
+
+    def mergeLeftRightPreservesSubset(l1:SortedList,l2: SortedList,e:Int): Unit = {
+        require(l1.isValid)
+        require(l2.isValid)
+        require(l1.isSubsetOf(l2))
+        mergeOnePreservesSubset(l1,l2,e)
+        assert(l1.isSubsetOf(l2.merge(Cons(e,Nil))))
+        mergeLeftRightPreservesSubsetTrivial(l2,e)
+        assert(Cons(e,Nil).isSubsetOf(l2.merge(Cons(e,Nil))))
+        mergeSubsetPreservation(l1,Cons(e,Nil),l2.merge(Cons(e,Nil)))
+    }.ensuring(l1.merge(Cons(e,Nil)).isSubsetOf(l2.merge(Cons(e,Nil))))
+
+    def mergeDistributivityOne(l1:SortedList,l2: SortedList,l3:SortedList): Unit = {
+        require(l1.isValid)
+        require(l2.isValid)
+        require(l3.isValid)
+        decreases(l1.size()+l2.size()+l3.size())
+
+        val lhs_1 = l1.merge(l2)
+        val lhs_2 = lhs_1.merge(l3)
+
+        val rhs_i = l2.merge(l3)
+        val rhs_o = l1.merge(rhs_i)
+
+        (l1,l2,l3) match {
+            case (Nil,_,_) => {
+                assert(lhs_1 == l2)
+                assert(lhs_2 == l2.merge(l3))
+                assert(rhs_i == l2.merge(l3))
+                assert(rhs_o == l2.merge(l3))
+                assert(lhs_2 == rhs_o)
+            }
+            case (_,Nil,_) => {
+                assert(lhs_1 == l1)
+                assert(lhs_2 == l1.merge(l3))
+                assert(rhs_i == l3)
+                assert(rhs_o == l1.merge(l3))
+                assert(lhs_2 == rhs_o)
+            }
+            case (_,_,Nil) => {
+                assert(lhs_2 == lhs_1)
+                assert(rhs_i == l2)
+                assert(rhs_o == l1.merge(l2))
+                assert(lhs_1 == rhs_o)
+                assert(lhs_2 == rhs_o)
+            }
+            case (Cons(x,xs), Cons(y,ys), Cons(z,zs)) => {
+                if (x < y && x < z) {
+                    assert(lhs_1 == Cons(x, xs.merge(l2)))
+                    assert(lhs_2 == Cons(x, (xs.merge(l2)).merge(l3)))
+                    assert(rhs_o == Cons(x, xs.merge(l2.merge(l3))))
+                    mergeDistributivityOne(xs, l2, l3)
+                    assert((xs.merge(l2)).merge(l3) == xs.merge(l2.merge(l3)))
+                    assert(lhs_2 == rhs_o)
+                }
+                else if (y < x && y < z) {
+                    assert(rhs_i == Cons(y, ys.merge(l3)))
+                    assert(rhs_o == Cons(y, l1.merge(ys.merge(l3))))
+                    assert(lhs_1 == Cons(y, l1.merge(ys)))
+                    assert(lhs_2 == Cons(y, (l1.merge(ys)).merge(l3)))
+                    mergeDistributivityOne(l1, ys, l3)
+                    assert((l1.merge(ys)).merge(l3) == l1.merge(ys.merge(l3)))
+                    assert(lhs_2 == rhs_o)
+                }
+                else if (z < x && z < y) {
+                    assert(rhs_i == Cons(z, l2.merge(zs)))
+                    assert(rhs_o == Cons(z, l1.merge(l2.merge(zs))))
+                    assert(lhs_2 == Cons(z, l1.merge(l2).merge(zs)))
+                    mergeDistributivityOne(l1, l2, zs)
+                    assert((l1.merge(l2)).merge(zs) == l1.merge(l2.merge(zs)))
+                    assert(lhs_2 == rhs_o)
+                }
+                else {
+                    if (x == y && y == z) {
+                        assert(lhs_1 == Cons(x, xs.merge(ys)))
+                        assert(lhs_2 == Cons(x, (xs.merge(ys)).merge(zs)))
+                        assert(rhs_i == Cons(y, ys.merge(zs)))
+                        assert(rhs_o == Cons(x, xs.merge(ys.merge(zs))))
+                        mergeDistributivityOne(xs, ys, zs)
+                        assert((xs.merge(ys)).merge(zs) == xs.merge(ys.merge(zs)))
+                        assert(lhs_2 == rhs_o)
+                    }
+                    else if (x == y) {
+                        assert(lhs_1 == Cons(x, xs.merge(ys)))
+                        assert(lhs_2 == Cons(x, (xs.merge(ys)).merge(l3)))
+                        mergeDistributivityOne(xs, ys, l3)
+                        assert((xs.merge(ys)).merge(l3) == xs.merge(ys.merge(l3)))
+                        assert(lhs_2 == rhs_o)
+                    }
+                    else if (y == z) {
+                        assert(rhs_i == Cons(y, ys.merge(zs)))
+                        mergeDistributivityOne(l1, ys, zs)
+                        assert(lhs_2 == rhs_o)
+                    }
+                    else {
+                        assert(x == z)
+                        mergeDistributivityOne(xs, l2, zs)
+                        assert(lhs_2 == rhs_o)
+                    }
+                }
+            }
+        }
+    }.ensuring(l1.merge(l2).merge(l3) == l1.merge(l2.merge(l3)))
+
+    def mergeDistributivity(l1:SortedList,l2: SortedList,l3:SortedList): Unit = {
+       // Generated with a Python script haha
+       require(l1.isValid)
+       require(l2.isValid)
+       require(l3.isValid)
+       mergeCommutativity(l1,l2)
+       mergeCommutativity(l2,l3)
+       mergeCommutativity(l1,l3)
+       mergeDistributivityOne(l1,l2,l3)
+       mergeDistributivityOne(l2,l3,l1)
+       mergeDistributivityOne(l3,l1,l2)
+       mergeDistributivityOne(l2,l1,l3)
+       mergeDistributivityOne(l1,l3,l2)
+       mergeDistributivityOne(l3,l2,l1)
+   }.ensuring(
+       l1.merge(l2).merge(l3) == l1.merge(l2.merge(l3)) &&
+       l2.merge(l1).merge(l3) == l1.merge(l2.merge(l3)) &&
+       l2.merge(l3).merge(l1) == l2.merge(l3.merge(l1)) &&
+       l1.merge(l3).merge(l2) == l1.merge(l3.merge(l2)) &&
+       l3.merge(l1).merge(l2) == l3.merge(l1.merge(l2)) &&
+       l3.merge(l2).merge(l1) == l3.merge(l2.merge(l1))
+   )
+
+
+    // def tailMergeSubOfParentMerge(l1:SortedList,l2: SortedList): Unit = {
+    //     require(l1.isValid)
+    //     require(l2.isValid)
+    //     require(l1!=Nil)
+    //     require(l2!=Nil)
+    //     //require(l1.tail.isSubsetOf(l1.tail.merge(l2.tail)))
+    //     tailSubsetOfSelf(l1)
+    //     assert(l1.tail.isSubsetOf(l1))
+    //     tailSubsetOfSelf(l2)
+    //     assert(l2.tail.isSubsetOf(l2))
+
+    //     assert(l1.tail.isSubsetOf(l1.merge(l2)))
+    //     assert(l2.tail.isSubsetOf(l1.merge(l2)))
+    //     mergeSubsetPreservation(l1.tail,l2.tail,l1.merge(l2))
+    // }.ensuring(l1.tail.merge(l2.tail).isSubsetOf(l1.merge(l2)))
+
+    def alwaysSubsetOfMerged(l1:SortedList,l2: SortedList): Unit = {
+        require(l1.isValid)
+        require(l2.isValid)
+        decreases(l1.merge(l2).size())
+        mergeCommutativity(l1,l2)
+        (l1,l1.merge(l2)) match {
+            case (Nil, _) => {}
+            case (Cons(x, xs), Nil) => assert(false)
+            case (Cons(x, xs), Cons(y, ys)) => {
+                assert(ys.isSubsetOf(l2))
+                if (x == y) {
+                    mergeDistributivity(l1,l2,xs)
+                    mergeDistributivity(l1,l2,xs)
+                    alwaysSubsetOfMerged(xs,ys)
+                    assert(xs.isSubsetOf(xs.merge(ys))) //  ==== xs <= xs U ys
+                    // we need 
+                    // 1) xs U ys <= l1 U l2
+                    // 2) xs+head = l1
+                    // 3) a <= b U c ==> a+e <= (bUC)+e 
+                } else if (x < y) {
+                    assert(false)
+                } else {
+                    alwaysSubsetOfMerged(l1,ys)
+                    assert(l1.isSubsetOf(l1.merge(ys))) //  ===== l1 <= l1 U ys
+                    //val smallMerge = y.merge()
+                    // we need :
+                    // 1) a U b <= a U (b+e) 
+
+                    subsetTransitivity(l1,l1.merge(ys),l1.merge(l2))
+                }
+            }
+        }
+
+    }.ensuring(l1.isSubsetOf(l1.merge(l2)))
+
+    def mergeImplForAllContains(l1: SortedList, l2: SortedList): Unit = {
+        require(l1.isValid)
+        require(l2.isValid)
+        decreases(l1.size()+l2.size())
+        //alwaysSubsetOfMerged(l1,l2)
+        subsetContainAll(l1,l1.merge(l2))
+    }.ensuring(l1.forall(k => l1.merge(l2).contains(k)))
+
+    def forallPredSubst(l:SortedList,p:Int=>Boolean) : Unit = {
+        require(l.isValid)
+        require(l != Nil)
+    }.ensuring(l.forall(p) == (p(l.head) && l.tail.forall(p)))
+
+    def containsImplBiggerThanHead(l:SortedList,e:Int): Unit = {
+        require(l.isValid)
+        require(l.contains(e))
+
+        l match {
+            case Nil => assert(false)
+            case Cons(x,Nil) => assert(x==e)
+            case Cons(x,xs) => {
+                if x==e then assert(true)
+                else {
+                    assert(xs.contains(e))
+                    assert(xs.isValid)
+                    containsImplBiggerThanHead(xs,e)
+                }
+            }
+        }
+    }.ensuring(e >= l.head)
+
+    def mergeContainingElementIsNOP(l:SortedList,e:Int): Unit = {
+        require(l.isValid)
+        require(l.contains(e))
+        containsImplBiggerThanHead(l,e)
+        l match{
+            case Cons(x,Nil) => {
+                assert(x == e)
+                assert(Cons(x,Nil).merge(l) == l)
+            }
+            case Cons(x,xs) => {
+                if x == e then {
+                    assert(Cons(e,Nil).merge(l) == Cons(x,xs))
+                    assert(Cons(e,xs) == l)
+                }
+                else if x < e then{
+                    assert(Cons(e,Nil).merge(l) == Cons(x,Cons(e,Nil).merge(xs)))
+                    mergeContainingElementIsNOP(xs,e)
+                    assert(Cons(e,Nil).merge(xs) == xs)
+                    assert(Cons(e,Nil).merge(l) == Cons(x,xs))
+                    assert(Cons(e,Nil).merge(l) == l)
+                }
+                else{
+                    assert(false)
+                }
+            }
+        }
+    }.ensuring(Cons(e,Nil).merge(l) == l)
+
+    def mergeHeadPreservation(l1:SortedList,l2:SortedList) : Unit = {
+        require(l1.isValid)
+        require(l1!=Nil)
+        require(l2.isValid)
+        require(l2.contains(l1.head))
+        decreases(l2.size())
+        assert(l2!=Nil)
+        containsImplBiggerThanHead(l2,l1.head)
+        (l1,l2) match {
+            case (Cons(x,Nil),_) =>{
+                assert(l1.tail.merge(l2) == l2)
+                mergeContainingElementIsNOP(l2,x)
+                assert(l1.merge(l2) == l2)
+            } 
+            case (Cons(x,xs),Cons(y,ys)) => {
+                if x == y then {
+                    assert(l1.merge(l2) == Cons(x,xs.merge(ys)))
+                    assert(y<xs.head)
+                    assert(l1.tail.merge(l2) == Cons(y,xs.merge(ys)))
+                }
+                else{
+                    if x < y then{
+                        assert(false) // because of contains, proven by containsImplBiggerThanHead(l2,l1.head)
+                    }
+                    else{
+                        assert(ys.contains(x))
+                        assert(l1.merge(l2) == Cons(y,l1.merge(ys)))
+                        mergeHeadPreservation(l1,ys)
+                        assert(l1.tail.merge(ys) == l1.merge(ys))
+                        assert(l1.merge(l2) == Cons(y,l1.tail.merge(ys)))
+                        assert(l1.tail.merge(l2) == Cons(y,l1.tail.merge(ys)))
+                    }
+                }
+            }
+        }
+    }.ensuring(l1.tail.merge(l2) == l1.merge(l2))
+
+    @library
+    def forAllNameSubstitution(l1:SortedList,l2:SortedList,l3:SortedList): Unit ={
+        //We have not managed to prove the Cons(x,xs) case of the match this as it -- we would need some sort of stainless annotation
+        // to be able to tell stainless to treat lambda equality as function proofs
+        require(l1.isValid)
+        require(l2.isValid)
+        require(l3 == l1.merge(l2))
+        require(l1.forall(k => l1.merge(l2).contains(k)))
+
+        val start_predicate = k => l1.merge(l2).contains(k)
+        val ret_predicate = k => l3.contains(k)
+
+        l1 match{
+            case Nil => {}
+            case Cons(x,Nil) =>{
+                assert(l1.forall(ret_predicate) == ret_predicate(x))
+                assert(l1.forall(start_predicate) == start_predicate(x))
+                assert(ret_predicate(x) == l3.contains(x))
+                assert(start_predicate(x) == l1.merge(l2).contains(x))
+            }
+            case Cons(x,xs) => {
+                assert(xs == l1.tail)
+                forallPredSubst(l1,ret_predicate)
+                assert(l1.forall(ret_predicate) == (ret_predicate(x) && xs.forall(ret_predicate)))
+                forallPredSubst(l1,start_predicate)
+                assert(l1.forall(start_predicate) == (start_predicate(x) && xs.forall(start_predicate)))
+                
+                assert(ret_predicate(x) == l3.contains(x))
+                assert(start_predicate(x) == l1.merge(l2).contains(x))
+                
+                if l2.contains(x) then{
+                    // In general, we cannot deduce that l.tail.forall(p) ==> l.forall(p)
+                    //However, when p == the "contains all elements from another list" predicate, this becomes obvious thanks to mergeHeadPreservation
+                    mergeHeadPreservation(l1,l2)
+                    assert(xs.merge(l2) == l1.merge(l2))
+                    assert(xs.merge(l2) == l3)
+                    leftTailForallHolds(xs,start_predicate)
+                    assert(xs.forall(start_predicate))
+                    assert(xs.forall(k => l1.merge(l2).contains(k)))
+                    leftTailForallContains(xs,l1.merge(l2))
+                    forAllNameSubstitution(xs,l2,l3)
+                    assert(xs.forall(ret_predicate))
+                    assert(l1.forall(ret_predicate))
+                }
+                else{
+                    l2 match{
+                        case Nil => {
+                            assert(l1.merge(l2) == l1)
+                            val simplified_start_pred = k => l1.contains(k)
+                            //The following 
+                            assert(start_predicate == simplified_start_pred)
+
+                        }
+                        case Cons(y,ys) => {
+                            //Now we need  xs.forall(next_start_predicate)  IMPLIES  l1.forall(start_predicate)
+                            //This is basically the `right` equivalent of `leftTail leftTailForallContains (modulo "predicate simplification", which must also somehow be proven), 
+                            
+                        }
+                    }
+                }
+            }
+        }
+    }.ensuring(l1.forall(k => l3.contains(k)))
+
+    def mergePreserveSubset(l1:SortedList,l2:SortedList): Unit = {
+        require(l1.isValid)
+        require(l2.isValid)
+        mergeImplForAllContains(l1,l2)
+        assert(l1.forall(k => l1.merge(l2).contains(k)))
+        val l3 = l1.merge(l2)
+        forAllNameSubstitution(l1,l2,l3)
+        assert(l1.forall(k => l3.contains(k)))
+        forallContainsSubset(l1,l3)
+    }.ensuring(l1.isSubsetOf(l1.merge(l2)))
 
     // def zzzzzzremAllSubsetOfRem(l:SortedList,e:Int,l2:SortedList): Unit ={
     //     require(l.isValid)
@@ -1024,38 +1587,7 @@ object slProperties{
     //     }
     // }.ensuring(!l.removeAll(l2).contains(l2.head))
 
-    // def zremSuperSetImpliesNotContainSubset(l:SortedList,subset:SortedList,superset: SortedList): Unit = {
-    //     //This could also have been called "removeAll is an invariant wrt subset"
-    //     require(l.isValid)
-    //     require(subset.isValid)
-    //     require(superset.isValid)
-    //     require(subset.isSubsetOf(superset)) // subset <= superset
-    //     decreases(l.size())
     
-    //     val rsuper = l.removeAll(superset)
-    //     val rsub   = l.removeAll(subset)
-    //     removeAllImpliesSubset(l,superset)
-    //     removeAllImpliesSubset(l,subset)
-    //     superset match
-    //         case vp.Cons(x, xs) =>{
-    //             // remImpliesSubset(l,x)
-    //             // assert(!rsuper.contains(x))
-    //             // if subset.contains(x) then{
-
-    //             //     assert(!rsub.contains(x))
-    //             //     zremSuperSetImpliesNotContainSubset(l.remove(x),subset.remove(x),xs)
-    //             // }
-    //             // else{
-    //             //     if l.contains(x) then assert(rsub.contains(x))
-    //             // }
-    //         }
-    //         case vp.Nil => {
-    //             assert(subset == vp.Nil)
-    //             assert(rsub == rsuper)
-    //             subsetReflexivity(l)
-    //         }
-        
-    // }.ensuring(l.removeAll(superset).isSubsetOf(l.removeAll(subset)))
 
     // def removeAllImpliesNotExistContain(data_to_remove: SortedList,removed_from_list: SortedList): Unit = {
     //     require(data_to_remove.isValid)
