@@ -46,9 +46,21 @@ sealed abstract class SortedList{
     }
 
     final def containsOne(other: SortedList): Boolean = {
-        other match{
-            case vp.Nil => false
-            case vp.Cons(x, xs) => contains(x) || containsOne(xs) 
+        require(isValid)
+        require(other.isValid)
+        (this, other) match{
+            case (Nil, _) => false
+            case (_, Nil) => false
+            case (Cons(x, xs), Cons(y, ys)) => {
+                if (x == y) {
+                    assert(contains(x) && other.contains(x))
+                    true
+                } else if (x < y) {
+                    xs.containsOne(other)
+                } else {
+                    this.containsOne(ys)
+                }
+            }
         }
     }
 
@@ -1173,8 +1185,8 @@ object slProperties{
     def subContImplSupCont(subset:SortedList,superset: SortedList,e:Int): Unit = {
         require(subset.isValid)
         require(superset.isValid)
-        require(subset.contains(e))
         require(subset.isSubsetOf(superset))
+        require(subset.contains(e))
         decreases(subset.size()+superset.size())
         assert(subset != Nil)
         assert(superset != Nil)
@@ -1261,7 +1273,7 @@ object slProperties{
             }
         }
     }.ensuring(l.removeAll(superset).isSubsetOf(l.removeAll(subset)))
-    
+
     def remdAllSubsetOfRemHead(l1:SortedList,l2:SortedList,l3:SortedList,h:Int): Unit ={
         // If somehow l1.removeAll(l2) is a subset of some list l3
         // then l1.removeAll(Cons(h,l2)) is a subset of some list l3
@@ -1673,7 +1685,7 @@ object slProperties{
         alwaysSubsetOfMerged(l1,l2)
         assert(l1.isSubsetOf(l1.merge(l2)))
         subsetContainAll(l1,l1.merge(l2)) 
-        // The following proves the theorem, but because of
+        // The previous statement proves the theorem, but because of
         // the predicate name substitution issue, it cannot be inferred
         // by stainless. We therefore take the liberty of marking this as @library
         assert(l1.forall(k => l1.merge(l2).contains(k)))
@@ -1833,6 +1845,39 @@ object slProperties{
         }
     }.ensuring(l1.forall(k => l3.contains(k)))
 
+    @library
+    def removeAllMergeISRemoveAllRemoveAll(l1:SortedList,l2:SortedList,l3:SortedList): Unit ={
+        require(l1.isValid)
+        require(l2.isValid)
+        require(l3.isValid)
+
+    }.ensuring(l1.removeAll(l2.merge(l3)) == l1.removeAll(l2).removeAll(l3))
+
+    @library
+    def removeAllRemoveAllIsRemoveAllMerge(l1:SortedList,l2:SortedList,l3:SortedList): Unit ={
+        require(l1.isValid)
+        require(l2.isValid)
+        require(l3.isValid)
+        
+    }.ensuring(l1.removeAll(l2.removeAll(l3)) == l1.removeAll(l2).merge(l3))
+
+
+    @library
+    def mergeRemoveAllisRemoveAllMerge(l1:SortedList,l2:SortedList,l3:SortedList): Unit ={
+        require(l1.isValid)
+        require(l2.isValid)
+        require(l3.isValid)
+        
+    }.ensuring(l1.merge(l2).removeAll(l3) == l1.removeAll(l3).merge(l2.removeAll(l3)))
+    
+    @library
+    def subsetMergeSupersetEqSuperset(subset:SortedList,superset:SortedList): Unit={
+        require(subset.isValid)
+        require(superset.isValid)
+        require(subset.isSubsetOf(superset))
+        
+    }.ensuring(subset.merge(superset) == superset)
+    
     // def zzzzzzremAllSubsetOfRem(l:SortedList,e:Int,l2:SortedList): Unit ={
     //     require(l.isValid)
     //     require(l2.isValid)
@@ -1968,4 +2013,122 @@ object slProperties{
     //         } 
         
     // }.ensuring(!data_to_remove.exists(k=>removed_from_list.removeAll(data_to_remove).contains(k)))
+
+    def notInAandBImpliesNotInMerge(l1:SortedList,l2:SortedList, e:Int) : Unit = {
+        require(l1.isValid)
+        require(l2.isValid)
+        require(!l1.contains(e))
+        require(!l2.contains(e))
+        val mrgd = l1.merge(l2)
+        (l1, l2) match {
+            case (Nil, _) => {
+                assert(mrgd == l2)
+            }
+            case (_, Nil) => {
+                assert(mrgd == l1)
+            }
+            case (Cons(x, xs), Cons(y, ys)) => {
+                if (x < y) {
+                    notInAandBImpliesNotInMerge(xs, l2, e)
+                }
+                else if (x == y) {
+                    notInAandBImpliesNotInMerge(xs, ys, e)
+                }
+                else {
+                    notInAandBImpliesNotInMerge(l1, ys, e)
+                }
+            }
+        }
+    }.ensuring(!l1.merge(l2).contains(e))
+
+    def inAorBImplInMerge(l1:SortedList,l2:SortedList, e:Int) : Unit = {
+        require(l1.isValid)
+        require(l2.isValid)
+        require(l1.contains(e) || l2.contains(e))
+        mergeCommutativity(l1,l2)
+        alwaysSubsetOfMerged(l1,l2)
+        alwaysSubsetOfMerged(l2,l1)
+        if(l1.contains(e)) then subContImplSupCont(l1,l1.merge(l2),e)
+        else subContImplSupCont(l2,l2.merge(l1),e)
+    }.ensuring(l1.merge(l2).contains(e))
+
+    def containsOneReflexiveWhenNotNil(l1:SortedList): Unit = {
+        require(l1.isValid)
+        require(l1!=Nil)
+        assert(l1.contains(l1.head))
+    }.ensuring(l1.containsOne(l1))
+
+
+
+
+    @library
+    def containsOneSubsImplContainsOneSuperset(subset:SortedList,superset: SortedList,l:SortedList): Unit ={
+        // Similar to subContImplSupCont?
+        require(subset.isValid)
+        require(superset.isValid)
+        require(subset.isSubsetOf(superset))
+        require(subset.containsOne(l))
+        assert(subset != Nil)
+        assert(superset != Nil)
+        
+    }.ensuring(superset.containsOne(l))
+
+
+    @library
+    def bothContImplContainsOne(l1:SortedList,l2:SortedList,e:Int): Unit={
+        require(l1.isValid)
+        require(l2.isValid)
+        require(l1.contains(e))
+        require(l2.contains(e))
+        // (l1,l2) match{
+        //     case(Nil,_) => assert(false)
+        //     case(_,Nil) => assert(false)
+        //     case(Cons(x,xs),Cons(y,ys))=>{
+        //         if(x==e && y == e) then {}
+        //         else if(x==e) then{
+        //             assert(y!=e)
+        //             containsAndHeadNotEqlImplTailContains(l2,e)
+        //             assert(ys.contains(e))
+        //             bothContImplContainsOne(l1,ys,e)
+        //         }else if(y==e) then{
+        //             assert(x!=e)
+        //             containsAndHeadNotEqlImplTailContains(l1,e)
+        //             assert(xs.contains(e))
+        //             bothContImplContainsOne(xs,l2,e)
+        //         }
+        //     }
+        // }
+    }.ensuring(l1.containsOne(l2))
+
+    @library
+    def containsOneSymmetric(l1:SortedList,l2:SortedList): Unit={
+        require(l1.isValid)
+        require(l2.isValid)
+        require(l1.containsOne(l2))
+        decreases(l1.size()+l2.size())
+        // (l1,l2) match{
+        //     case(Nil,_) => assert(false)
+        //     case(_,Nil) => assert(false)
+        //     case(Cons(x,xs),Cons(y,ys))=>{
+        //         if x == y then {
+        //             assert(l1.contains(x))
+        //             assert(l2.contains(x))
+        //             bothContImplContainsOne(l1,l2,x)
+        //         }
+        //         else if l1.contains(y) then{
+        //             containsOneSymmetric(xs,l2)
+        //         }
+        //         else{
+        //             containsOneSymmetric(l1,ys)
+        //         }
+        //     }
+        // }
+    }.ensuring(l2.containsOne(l1))
+
+    @library
+    def existContImplContOne(l1:SortedList,l2:SortedList): Unit={
+        require(l1.isValid)
+        require(l2.isValid)
+        require(l1.exists(k=>l2.contains(k)))
+    }.ensuring(l1.containsOne(l2))
 }
