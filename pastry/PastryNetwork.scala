@@ -95,6 +95,7 @@ case class PastryNetwork(nodes: List[PastryNode],l: BigInt){
         isvalidstainless(nodes,node=>node.id) // the nodes must be stored in an ordered set fashion
         // We ignore "too small" networks, which don't even have l nodes
         && nodes.size >= l
+        && (l/2 + l/2) == l 
         && nodes.forall(node=>node.isValid) // all the nodes must be valid
         && 
         {
@@ -153,8 +154,16 @@ case class PastryNetwork(nodes: List[PastryNode],l: BigInt){
         require(isValid)
         require(nodes_to_drop.forall(node => nodes.contains(node))) // All the nodes we are dropping are nodes in the network        
         require(isvalidstainless(nodes_to_drop,node=>node.id))
-        require(!nodes_to_drop.exists(dropped_node => node_ids().isFirstLastK(l/2,dropped_node.id)))
-        require(nodes.forall(node => node.leafset.subsetSize(get_ids(nodes_to_drop)) < l/2))
+        require(nodes_to_drop.forall(dropped_node => !node_ids().isFirstLastK(l/2,dropped_node.id)))
+        require(nodes.forall(node => {
+            assert(node.isValid)
+            node.leafset.subsetSize(get_ids(nodes_to_drop)) < l/2
+        }))
+        assert(nodes.forall(node=>node.isValid))
+        assert(nodes.forall(node=>{
+            assert(node.isValid)
+            true
+        }))
         this
         // TODO Implement drop
     }.ensuring((dropped:PastryNetwork) => dropped.isValid && all_keys() == dropped.all_keys())
@@ -219,7 +228,7 @@ object PastryProps{
         }
     }.ensuring(start.own_data.isSubsetOf(start.remove_from_ls_and_replace(dropped_node,replacement,to).own_data))
 
-    def nodeBuiltFromRemoveIsValid(start:PastryNode,dropped_node:PastryNode,replacement:PastryNode,to: Boolean): Unit = {
+    def buildDataNotInLeafsetData(start:PastryNode,dropped_node:PastryNode,replacement:PastryNode,to: Boolean): Unit = {
         require(start.isValid)
         require(dropped_node.isValid)
         require(replacement.isValid)
@@ -227,19 +236,8 @@ object PastryProps{
         require(!start.leafset.contains(replacement.id))
         require(dropped_node.id != start.id) // can't drop yourself
         require(start.own_data.removeAll(replacement.own_data) == start.own_data) // our data doesn't contain the replacing node's data
-        
-        
-        nodeBuiltFromRemoveHasCorrectLS(start,dropped_node,replacement)
-
         val built = start.remove_from_ls_and_replace(dropped_node,replacement,to)
-
-        assert(built.leafset.size() == start.l)
-        assert(built.leafset.isValid)
-        assert(built.routingTable.isValid)
-        startDataisSubsetOfnbfrData(start,dropped_node,replacement,to)
-        assert(start.own_data.isSubsetOf(built.own_data))
-
-            assert(start.own_data.removeAll(start.leafset_data) == start.own_data) // From isValid
+        assert(start.own_data.removeAll(start.leafset_data) == start.own_data) // From isValid
         if !to then{
             assert(built.own_data == start.own_data)
             assert(built.leafset_data == start.leafset_data.merge(replacement.own_data))
@@ -261,10 +259,10 @@ object PastryProps{
                     .merge(dropped_node.own_data))
 
             mergeRemoveAllisRemoveAllMerge(start.own_data,dropped_node.own_data,start.leafset_data.merge(replacement.own_data))
+            mergeDistributivityOne(start.own_data.removeAll(start.leafset_data.merge(replacement.own_data)),dropped_node.own_data.removeAll(start.leafset_data.merge(replacement.own_data)),dropped_node.own_data)
             
             
             removeAllRemoveAllIsRemoveAllMerge(dropped_node.own_data,start.leafset_data.merge(replacement.own_data),dropped_node.own_data)
-            mergeDistributivityOne(start.own_data.removeAll(start.leafset_data.merge(replacement.own_data)),dropped_node.own_data.removeAll(start.leafset_data.merge(replacement.own_data)),dropped_node.own_data)
             subsetReflexivity(dropped_node.own_data)
             removeAllImpliesSubset(dropped_node.own_data,start.leafset_data.merge(replacement.own_data))
             subsetMergeSupersetEqSuperset(dropped_node.own_data.removeAll(start.leafset_data.merge(replacement.own_data)),dropped_node.own_data)
@@ -279,6 +277,28 @@ object PastryProps{
 
             assert(built.own_data.removeAll(built.leafset_data) == built.own_data) // Must reach this
         }
+    }.ensuring(start.remove_from_ls_and_replace(dropped_node,replacement,to).own_data.removeAll(start.remove_from_ls_and_replace(dropped_node,replacement,to).leafset_data) == start.remove_from_ls_and_replace(dropped_node,replacement,to).own_data)
+
+    def nodeBuiltFromRemoveIsValid(start:PastryNode,dropped_node:PastryNode,replacement:PastryNode,to: Boolean): Unit = {
+        require(start.isValid)
+        require(dropped_node.isValid)
+        require(replacement.isValid)
+        require(start.leafset.contains(dropped_node.id))
+        require(!start.leafset.contains(replacement.id))
+        require(dropped_node.id != start.id) // can't drop yourself
+        require(start.own_data.removeAll(replacement.own_data) == start.own_data) // our data doesn't contain the replacing node's data
+        
+        
+        nodeBuiltFromRemoveHasCorrectLS(start,dropped_node,replacement)
+
+        val built = start.remove_from_ls_and_replace(dropped_node,replacement,to)
+
+        assert(built.leafset.size() == start.l)
+        assert(built.leafset.isValid)
+        assert(built.routingTable.isValid)
+        startDataisSubsetOfnbfrData(start,dropped_node,replacement,to)
+        assert(start.own_data.isSubsetOf(built.own_data))
+        buildDataNotInLeafsetData(start,dropped_node,replacement,to)        
     }.ensuring(start.remove_from_ls_and_replace(dropped_node,replacement,to).isValid)
 
     // def dropIsCorrectEasy(n: PastryNetwork, dropped_nodes: List[PastryNode]): Unit ={
