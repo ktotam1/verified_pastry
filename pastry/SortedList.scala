@@ -1927,7 +1927,160 @@ object slProperties{
         require(l2.isValid)
         require(l3.isValid)
 
+        // (l2, l3) match {
+        //     case (_, Nil) => ()
+        //     case (Nil, _) => ()
+        //     case (Cons(y, ys), Cons(z, zs)) => {
+        //         val Cons(x, xs) = l1
+        //         if (y == z) {
+        //             removeAllMergeISRemoveAllRemoveAll(l1, )
+        //         } else if (y > z) {
+
+        //         } else {
+
+        //         }
+        //     }
+        // }
+        
     }.ensuring(l1.removeAll(l2.merge(l3)) == l1.removeAll(l2).removeAll(l3))
+
+    def removeAllSupersetGetsNil(subset: SortedList, superset: SortedList): Unit = {
+        require(subset.isValid && superset.isValid)
+        require(subset.isSubsetOf(superset))
+
+        (subset, superset) match {
+            case (Nil, _) => ()
+            case (Cons(x, xs), Cons(y, ys)) => {
+                if (x == y) {
+                    removeAllSupersetGetsNil(xs, ys)
+                } else if (x > y) {
+                    removeAllSupersetGetsNil(subset, ys)
+                } else {
+                    assert(false)
+                }
+            }
+        }
+
+    }.ensuring(subset.removeAll(superset) == Nil)
+
+    def oneNotSubsetRemoveAllStillPreserve(e: Int, l: SortedList): Unit = {
+        require(l.isValid && Cons(e, Nil).isValid)
+        require(!Cons(e, Nil).isSubsetOf(l))
+        val one = Cons(e, Nil)
+        val ret = one.removeAll(l)
+        l match {
+            case Nil => ()
+            case Cons(y, ys) => {
+                if (e == y) {
+                    assert(false)
+                } else if (e < y) {
+                    assert(ret == Cons(e, Nil.removeAll(l)))
+                } else {
+                    oneNotSubsetRemoveAllStillPreserve(e, ys)
+                }
+            }
+        }
+    }.ensuring(Cons(e, Nil).removeAll(l) == Cons(e, Nil))
+
+    def mergeCommutativityABC2ACB(a: SortedList, b: SortedList, c: SortedList): Unit = {
+        require(a.isValid && b.isValid && c.isValid)
+        mergeDistributivity(a, b, c)
+        assert(a.merge(b).merge(c) == a.merge(b.merge(c)))
+        mergeCommutativity(b, c)
+        assert(a.merge(b).merge(c) == a.merge(c.merge(b)))
+    }.ensuring(a.merge(b).merge(c) == a.merge(c).merge(b))
+
+    def removeAllDistributivityOverUnionOne(l1: SortedList, e: Int, l2: SortedList): Unit = {
+        require(l1.isValid)
+        require(l2.isValid)
+
+        val one = Cons(e, Nil)
+        val lhs = l1.merge(one).removeAll(l2)
+        val rhs = l1.removeAll(l2).merge(one.removeAll(l2))
+
+        l1 match {
+            case Nil => ()
+            case Cons(x, xs) => {
+
+                val onex = Cons(x, Nil)
+                assert(rhs == xs.merge(onex).removeAll(l2).merge(one.removeAll(l2)))
+                val rhsprefix = xs.merge(onex).removeAll(l2)
+                removeAllDistributivityOverUnionOne(xs, x, l2)
+                assert(rhsprefix == xs.removeAll(l2).merge(onex.removeAll(l2)))
+                val rhs2 = xs.removeAll(l2).merge(onex.removeAll(l2)).merge(one.removeAll(l2))
+
+                if (x == e) {
+                    assert(l1.merge(one) == l1)
+                    assert(lhs == l1.removeAll(l2))
+                    if (onex.isSubsetOf(l2)) {
+                        removeAllSupersetGetsNil(onex, l2)
+                        assert(rhs2 == xs.removeAll(l2).merge(Nil).merge(one.removeAll(l2)))
+                        assert(rhs2 == xs.removeAll(l2).merge(one.removeAll(l2)))
+                        removeAllDistributivityOverUnionOne(xs, e, l2)
+                        assert(rhs2 == xs.merge(one).removeAll(l2))
+                        assert(rhs2 == xs.merge(onex).removeAll(l2))
+                        assert(rhs2 == l1.removeAll(l2))
+                        assert(lhs == rhs2 && lhs == rhs)
+                    } else {
+                        oneNotSubsetRemoveAllStillPreserve(e, l2)
+                        assert(rhs2 == xs.removeAll(l2).merge(onex).merge(one))
+                        assert(rhs2 == xs.removeAll(l2).merge(onex.merge(one)))
+                        assert(rhs2 == xs.removeAll(l2).merge(onex))
+                        assert(rhs2 == xs.removeAll(l2).merge(onex.removeAll(l2)))
+                        removeAllDistributivityOverUnionOne(xs, x, l2)
+                        assert(rhs2 == xs.merge(onex).removeAll(l2))
+                        assert(rhs2 == l1.removeAll(l2))
+                        assert(lhs == rhs2 && lhs == rhs)
+                    }
+                } else if (x < e) {
+                    assert(l1.merge(one) == Cons(x, xs.merge(one)))
+                    assert(lhs == Cons(x, xs.merge(one)).removeAll(l2))
+                    assert(lhs == xs.merge(one).merge(onex).removeAll(l2))
+                    if (onex.isSubsetOf(l2)) {
+                        if (one.isSubsetOf(l2)) {
+                            assert(rhs2 == xs.removeAll(l2))
+                           
+                        } else {
+                            assert(rhs2 == xs.removeAll(l2).merge(one))
+                        }
+                    } else {
+                        if (one.isSubsetOf(l2)) {
+                            assert(rhs2 == xs.removeAll(l2).merge(onex))
+                        } else {
+                            assert(rhs2 == xs.removeAll(l2).merge(one).merge(onex))
+                        }
+                    }
+
+                } else { // e < x
+                    assert(l1.merge(one) == Cons(e, l1.merge(Nil)))
+                    assert(l1.merge(one) == Cons(e, l1))
+                    assert(lhs == Cons(e, l1).removeAll(l2))
+                }
+            }
+        }
+
+
+              // (l1 U {e}) \ l2 == (l1 \ l2) U ({e} \ l2)
+        // val one = Cons(e, Nil)
+        // val lhs = l1.merge(one).removeAll(l2)
+        // val rhs = l1.removeAll(l2).merge(one.removeAll(l2))
+
+        // if (one.isSubsetOf(l2)) {
+        //     removeAllSupersetGetsNil(one, l2)
+        //     assert(one.removeAll(l2) == Nil)
+        //     assert(lhs == l1.removeAll(l2)) //
+        //     assert(rhs == l1.removeAll(l2))
+        //     assert(lhs == rhs)
+        // } else {
+        //     oneNotSubsetRemoveAllStillPreserve(e, l2)
+        //     assert(one.removeAll(l2) == one) //
+        //     assert(rhs == l1.removeAll(l2).merge(one)) // (l1 \ l2) U {e}
+        //     assert(lhs == l1.merge(one).removeAll(l2)) // (l1 U {e}) \ l2
+        //     assert(lhs == rhs) //
+        // }
+
+
+    }.ensuring(l1.merge(Cons(e, Nil)).removeAll(l2) == l1.removeAll(l2).merge(Cons(e, Nil).removeAll(l2)))
 
     @library
     def removeAllRemoveAllSubIsRemoveAllMerge(l1:SortedList,l2:SortedList,l3:SortedList): Unit ={
@@ -1938,21 +2091,90 @@ object slProperties{
         
     }.ensuring(l1.removeAll(l2.removeAll(l3)) == l1.removeAll(l2).merge(l3))
 
+    // def mergeCommutativityThree(l1: SortedList, l2: SortedList, l3: SortedList): Unit = {
+    //     require(l1.isValid && l2.isValid && l3.isValid)
+    // }.ensuring(l1.merge(l2).merge(l3) == l1.merge(l3).merge(l2))
 
-    @library
     def mergeRemoveAllisRemoveAllMerge(l1:SortedList,l2:SortedList,l3:SortedList): Unit ={
         require(l1.isValid)
         require(l2.isValid)
         require(l3.isValid)
-        
+        // (A U B) \ C == (A \ C) U (B \ C)
+
+        l1 match {
+            case Nil => ()
+            case Cons(x, xs) => {
+                val lhs = l1.merge(l2).removeAll(l3)
+                val rhs = l1.removeAll(l3).merge(l2.removeAll(l3))
+                val onex = Cons(x, Nil)
+
+                // lhs 
+                assert(lhs == xs.merge(onex).merge(l2).removeAll(l3))
+                mergeDistributivity(xs, onex, l2)
+                assert(xs.merge(onex).merge(l2) == xs.merge(onex.merge(l2)))
+                mergeCommutativity(onex, l2)
+                assert(xs.merge(onex.merge(l2)) == xs.merge(l2.merge(onex)))
+                assert(xs.merge(onex).merge(l2) == xs.merge(l2).merge(onex))
+                assert(lhs == xs.merge(l2).merge(onex).removeAll(l3)) // (xs U l2 U {x}) \ l3 by commutativity
+                removeAllDistributivityOverUnionOne(xs.merge(l2), x, l3)
+                // assert(xs.merge(l2).merge(onex).removeAll(l3)
+                //    == xs.merge(l2).removeAll(l3).merge(onex.removeAll(l3)))
+                // (xs U l2) \ l3 U ({x} \ l3)
+                assert(lhs == xs.merge(l2).removeAll(l3).merge(onex.removeAll(l3)))
+
+                // rhs
+                assert(rhs == xs.merge(onex).removeAll(l3).merge(l2.removeAll(l3)))
+                removeAllDistributivityOverUnionOne(xs, x, l3)
+                assert(rhs == xs.removeAll(l3).merge(onex.removeAll(l3)).merge(l2.removeAll(l3))) // (xs \ C) U ({x} \ C) U (B \ C)
+                mergeDistributivity(xs.removeAll(l3), onex.removeAll(l3), l2.removeAll(l3))
+                assert(rhs == xs.removeAll(l3).merge(onex.removeAll(l3).merge(l2.removeAll(l3))))
+                mergeCommutativity(onex.removeAll(l3), l2.removeAll(l3))
+                assert(rhs == xs.removeAll(l3).merge(l2.removeAll(l3).merge(onex.removeAll(l3))))
+                assert(rhs == xs.removeAll(l3).merge(l2.removeAll(l3)).merge(onex.removeAll(l3)))
+                // commutativity
+
+                assert(rhs == xs.removeAll(l3).merge(l2.removeAll(l3)).merge(onex.removeAll(l3))) // (xs \ l3) U (l2 \ l3) U ({x} \ l3)
+                mergeRemoveAllisRemoveAllMerge(xs, l2, l3)
+                assert(rhs == xs.merge(l2).removeAll(l3).merge(onex.removeAll(l3)))
+                assert(lhs == rhs)
+            }
+        }
+
     }.ensuring(l1.merge(l2).removeAll(l3) == l1.removeAll(l3).merge(l2.removeAll(l3)))
     
-    @library
     def subsetMergeSupersetEqSuperset(subset:SortedList,superset:SortedList): Unit={
         require(subset.isValid)
         require(superset.isValid)
         require(subset.isSubsetOf(superset))
-        
+
+        (subset, superset) match {
+            case (Nil, Nil) => ()
+            case (Nil, _) => ()
+            case (Cons(x, xs), Cons(y, ys)) => {
+                if (x == y) {
+                    assert(xs.isSubsetOf(ys))
+                    subsetMergeSupersetEqSuperset(xs, ys)
+                    // a.merge(b) == Cons(x, xs.merge(ys))
+                    // xs.merge(ys) == ys
+                    // Cons(x, ys) == b
+                    // holds
+                }
+                else if (x < y) {
+                    assert(false)
+                    // this never happens
+                    // Cons(x,xs.merge(other))
+                }
+                else {
+                    assert(subset.isSubsetOf(ys))
+                    subsetMergeSupersetEqSuperset(subset, ys)
+                    // subset.merge(ys) == ys
+                    // subset.merge(superset) ==
+                    // Cons(y, subset.merge(ys)) ==
+                    // Cons(y, ys) ==
+                    // superset
+                }
+            }
+        }
     }.ensuring(subset.merge(superset) == superset)
     
     @library
@@ -2143,9 +2365,6 @@ object slProperties{
         assert(l1.contains(l1.head))
     }.ensuring(l1.containsOne(l1))
 
-
-
-
     @library
     def containsOneSubsImplContainsOneSuperset(subset:SortedList,superset: SortedList,l:SortedList): Unit ={
         // Similar to subContImplSupCont?
@@ -2155,7 +2374,12 @@ object slProperties{
         require(subset.containsOne(l))
         assert(subset != Nil)
         assert(superset != Nil)
-        
+
+        (subset, superset) match {
+            case (Cons(x, xs), Cons(y, ys)) => {
+                ()
+            }
+        }
     }.ensuring(superset.containsOne(l))
 
 
