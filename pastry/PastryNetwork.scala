@@ -8,6 +8,7 @@ import NetworkHelpers.*
 case class PastryNetwork(nodes: List[PastryNode],l: BigInt){
     import ListNodesProperiesNotNeededIfSortedListGeneric.*
     import PastryNetworkProps.*
+    import PastryNodeProps.*
     require(l>2 // the l/2-1 bound doesn't work for l=2
         && (l/2 + l/2) == l
         && nodes.size > l
@@ -139,6 +140,7 @@ case class PastryNetwork(nodes: List[PastryNode],l: BigInt){
         decreases(vulnNodes.size+nodes_to_drop.size)
 
         mergePreservesMultipleSort(nodes,leftSafe,vulnNodes,rightSafe)
+        orderedImpliesOrdered(nodes,leftSafe,vulnNodes,rightSafe)
         (nodes_to_drop,vulnNodes) match{
             case (stainless.collection.Nil(),_)=>{
                 // we drop no nodes, great
@@ -150,11 +152,16 @@ case class PastryNetwork(nodes: List[PastryNode],l: BigInt){
             }
             case (Cons(d,ds),Cons(m,ms)) =>{
                 mergeAddOnePreservesMerge(leftSafe,vulnNodes,leftSafe++vulnNodes)
+                get_idsTransparentToRemAllSupSubAndremAllPreserveIntersectDef(leftSafe,vulnNodes)
+                isSortedByIdImplTailIsSortedById(vulnNodes)
+                isSortedByNodeIdImplAppendBiggerHeadPreservesSort(leftSafe,vulnNodes,leftSafe ++ vulnNodes)
+                get_idsTransparentToalwaysSubsetOfMerged(vulnNodes,rightSafe)
+                get_idsTransparentToSupersetInv(leftSafe,rightSafe,m)
+                get_idsTransparentToSupersetInv(leftSafe,nodes_to_drop,m)
+                get_idsTransparentWhenPrependSmaller(rightSafe,nodes_to_drop,m)
                 // Some nodes are dropped, too bad :(
                 if (d.id != m.id) then {
                     // But not this vulnerable one!
-                    isSortedByNodeIdImplAppendBiggerHeadPreservesSort(leftSafe,vulnNodes,leftSafe ++ vulnNodes)
-                    isSortedByIdImplTailIsSortedById(vulnNodes)
                     dropRecOnPotentiallyRemovedNodes(leftSafe :+ m,ms,rightSafe,nodes_to_drop)
                 }
                 else{
@@ -166,11 +173,51 @@ case class PastryNetwork(nodes: List[PastryNode],l: BigInt){
                             assert(leftSafe.size + rightSafe.size < l-2)
                             assert(false) // this case is impossible :)
                         }
-                        case (stainless.collection.Cons(x,xs),stainless.collection.Nil()) =>this
-                        case (stainless.collection.Nil(),stainless.collection.Cons(y,ys)) =>this
+                        case (stainless.collection.Cons(x,xs),stainless.collection.Nil()) =>{
+                            // Same case as the more complex Cons below, copy pasted the proof, except now we take the leftmost node as replacement:
+                            val closestNode = x
+                            val replacementNode = xs.head
+                            val updatedNode = closestNode.remove_from_ls_and_replace(m,replacementNode,true)
+                            nodeBuiltFromRemoveIsValid(closestNode,m,replacementNode,true) 
+                            nodeBuiltFromRemovePreservesDroppedDataWhenTO(closestNode,m,replacementNode)
+                            nodeBuiltFromRemovePreservesStartData(closestNode,m,replacementNode,true)
+                            buildDataNotInLeafsetData(closestNode,m,replacementNode,true) 
+                            val newNetwork = PastryNetwork((leftSafe:+updatedNode)++vulnNodes++rightSafe,l)
+                            assert(newNetwork.all_keys() == all_keys())
+                            newNetwork.dropRecOnPotentiallyRemovedNodes(leftSafe,vulnNodes,rightSafe,ds)
+                        }
+                        case (stainless.collection.Nil(),stainless.collection.Cons(y,ys)) =>{
+                            // Symmetrical to above
+                            val closestNode = y
+                            val replacementNode = ys.last
+                            val updatedNode = closestNode.remove_from_ls_and_replace(m,replacementNode,true)
+                            nodeBuiltFromRemoveIsValid(closestNode,m,replacementNode,true) 
+                            nodeBuiltFromRemovePreservesDroppedDataWhenTO(closestNode,m,replacementNode)
+                            nodeBuiltFromRemovePreservesStartData(closestNode,m,replacementNode,true)
+                            buildDataNotInLeafsetData(closestNode,m,replacementNode,true) 
+                            val newNetwork = PastryNetwork((leftSafe:+updatedNode)++vulnNodes++rightSafe,l)
+                            assert(newNetwork.all_keys() == all_keys())
+                            newNetwork.dropRecOnPotentiallyRemovedNodes(leftSafe,vulnNodes,rightSafe,ds)
+                            //this
+                        }
                         case (stainless.collection.Cons(x,xs),stainless.collection.Cons(y,ys)) =>{
                             val closestNode = x // arbitrarily selected between both
-                            this
+                            val replacementNode = ys.last
+                            val updatedNode = closestNode.remove_from_ls_and_replace(m,replacementNode,true)
+                            // We get a valid Node:
+                            nodeBuiltFromRemoveIsValid(closestNode,m,replacementNode,true) 
+                            // The data of our dropped node is a subset of the data of our updateNode
+                            nodeBuiltFromRemovePreservesDroppedDataWhenTO(closestNode,m,replacementNode)
+                            // And the closestNode's data is kept as well
+                            nodeBuiltFromRemovePreservesStartData(closestNode,m,replacementNode,true)
+                            // Furthermore, the built node doesn't contain data from the leafset data, this would have been helpful for the leafset invariant
+                            buildDataNotInLeafsetData(closestNode,m,replacementNode,true) 
+                            
+                            // Now we just need to update the network.
+                            // Since the replacement node was a safe node, we can just put it back in the list, and continue iterating over all other nodes to drop
+                            val newNetwork = PastryNetwork((leftSafe:+updatedNode)++vulnNodes++rightSafe,l)
+                            assert(newNetwork.all_keys() == all_keys())
+                            newNetwork.dropRecOnPotentiallyRemovedNodes(leftSafe,vulnNodes,rightSafe,ds)
                         }
                     }
                 }
@@ -339,6 +386,31 @@ object ListNodesProperiesNotNeededIfSortedListGeneric{
         // by takeRemoveDropIsTake for left.removeAll(right) == left
         // and by remAllSupersetSubsetPreservesEquality, which we didn't have time to finish proving
     }.ensuring(get_ids(l).removeAll(get_ids(subset)) == get_ids(l))
+    @library
+    def get_idsTransparentToRemAllSupSubAndremAllPreserveIntersectDef(a:List[PastryNode],b:List[PastryNode]): Unit = {
+        require(isSortedByNodeId(a))
+        require(isSortedByNodeId(b))
+        require(get_ids(a).removeAll(get_ids(b)) == get_ids(a))
+        require(b!=stainless.collection.Nil())
+        // alwaysSubsetOfMerged remAllpreservesEmptyIntersectdef and remAllSupersetSubsetPreservesEquality and 
+    }.ensuring(get_ids(a :+ b.head).removeAll(get_ids(b.tail)) == get_ids(a :+ b.head))
+    @library
+    def get_idsTransparentToalwaysSubsetOfMerged(a:List[PastryNode],b:List[PastryNode]): Unit = {
+        require(isSortedByNodeId(a))
+        require(isSortedByNodeId(b))
+        require(get_ids(a).removeAll(get_ids(b)) == get_ids(a))
+        require(a!=stainless.collection.Nil())
+        // alwaysSubsetOfMerged remAllpreservesEmptyIntersectdef 
+    }.ensuring(get_ids(a.tail).removeAll(get_ids(b)) == get_ids(a.tail))
+    @library
+    def get_idsTransparentToSupersetInv(a:List[PastryNode],b:List[PastryNode],x:PastryNode): Unit = {
+        require(isSortedByNodeId(a))
+        require(isSortedByNodeId(b))
+        require(get_ids(a).removeAll(get_ids(b)) == get_ids(a))
+        // alwaysSubsetOfMerged remAllSupersetSubsetPreservesEquality
+    }.ensuring(get_ids(a:+x).removeAll(get_ids(b)) == get_ids(a:+x))
+    
+
 
     @library
     def isSortedByNodeIdImplAppendBiggerHeadPreservesSort(l:List[PastryNode],q:List[PastryNode],evidence:List[PastryNode]):Unit={
@@ -373,6 +445,25 @@ object ListNodesProperiesNotNeededIfSortedListGeneric{
         require((l ++ q) == evidence)
         require(q!=stainless.collection.Nil())
     }.ensuring(((l:+q.head) ++ (q.tail)) == evidence)
+
+    @library
+    def orderedImpliesOrdered(evidence:List[PastryNode],l1:List[PastryNode],l2:List[PastryNode],l3:List[PastryNode]): Unit={
+        require(evidence == (l1 ++ l2 ++ l3))
+        require(isSortedByNodeId(evidence))
+        //This was not proven, as we couldn't establish properties on sorted lists of lists, since we didn't have generic lists in the first place to start with
+    }.ensuring(l1.head.id < l2.head.id && l2.head.id < l3.head.id)
+}
+
+object InvariantsNeeded{
+    //The following object holds some invariants over our network we didn't have time to prove,
+    // yet we need to ensure drop validity (our PastryNode.remove_from_ls_and_replace correctly assumes they hold)
+    // To be able to have a provable final project, we will therefore just assume they always hold
+    @library
+    def uniqueInvariant(a:PastryNode,b:PastryNode): Unit = {
+        //require(a.id!=b.id && c.id!=a.id && b.id!=c.id)
+        require(a.id!=b.id)
+        //three different nodes have the 
+    }.ensuring(a.own_data.removeAll(b.own_data) == a.own_data)
 }
 
 // --------------------- Proofs -----------------------------------
@@ -421,6 +512,8 @@ object PastryNetworkProps{
         get_ids(network.nodes).takeLast(network.l/2-1).removeAll(get_ids(nodes_to_drop)) == get_ids(network.nodes).takeLast(network.l/2-1)
     )
 
+
+    // Hereunder, methods we have not had time to prove :(
     @library
     def sliceSliceUnion[T](l:List[T],from:BigInt,to:BigInt): Unit = {
         require(from >= 0 && from <= l.size)
@@ -428,6 +521,14 @@ object PastryNetworkProps{
         require(from<to)
         // Equivalent of SortedList sliceSliceUnion
     }.ensuring((l.take(from) ++ l.slice(from,to) ++ l.slice(to,l.size) )== l)
+
+    @library
+    def get_idsTransparentWhenPrependSmaller(a:List[PastryNode],b:List[PastryNode],x:PastryNode): Unit = {
+        require(isSortedByNodeId(a))
+        require(isSortedByNodeId(b))
+        require(get_ids(a).removeAll(get_ids(b)) == get_ids(a))
+        require(x.id<a.head.id)
+    }.ensuring(get_ids(x::a).removeAll(get_ids(b)) == get_ids(x::a))
 
     // }.ensuring(get_ids(l).take(k) == get_ids(l.take(k)))
 

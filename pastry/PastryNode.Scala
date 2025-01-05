@@ -19,9 +19,7 @@ import StainlessProperies.*
 */
 case class PastryNode(id: Int, l: BigInt, routingTable: SortedList,leafset: SortedList, own_data: SortedList, leafset_data: SortedList){
     /*
-        For some reason, stainless isn't really good at using Properties proven outside of a class 
-
-        Therefeore, instead of having class invariants, such as 
+        Equivalent to having class invariants, such as 
         
         ```
         require((l/2 + l/2) == l) // assume L divisible by 2
@@ -30,8 +28,6 @@ case class PastryNode(id: Int, l: BigInt, routingTable: SortedList,leafset: Sort
         require(!own_data.exists(key=>leafset_data.contains(key))) // our data must not be in the leafset_data 
         require(routingTable.isValid) // the routing table must be sorted by closest elements (defined as closest node id for this part of the exercise)
         ```
-
-        which would've been a very elegant way to model this, I will rewrite this using an `isValid` function, and only properties
     */
     def isValid: Boolean = {
         (l/2 + l/2) == l &&
@@ -42,13 +38,6 @@ case class PastryNode(id: Int, l: BigInt, routingTable: SortedList,leafset: Sort
         leafset_data.isValid &&
         own_data.removeAll(leafset_data) == own_data
     }
-
-       
-    // ?? require(leafset.forall(node => routingTable.contains(node))) 
-
-
-    //def is_ready(): Boolean = state.is_ready() : Ignore state for now, it adds nothing
-
 
     def remove_from_ls_and_replace(dropped_node: PastryNode,replacing_node:PastryNode,take_ownership:Boolean): PastryNode = {
         require(isValid)
@@ -66,13 +55,10 @@ case class PastryNode(id: Int, l: BigInt, routingTable: SortedList,leafset: Sort
         val new_leafset_data = if !take_ownership then leafset_data.merge(replacing_node.own_data) else leafset_data.merge(replacing_node.own_data).removeAll(dropped_node.own_data)
 
         PastryNode(id,l,newrt,new_ls,new_data,new_leafset_data)
-    }//.ensuring((ret:PastryNode) => dropped_node.own_data.forall(k=>ret.own_data.contains(k)) && own_data.forall(k=>ret.own_data.contains(k)))
-      // Might have to rewrite a minimal example of  that poscondition to check whether it can actually be proven with List[Int]
-      // Otherwise can adapt own_data to become a SortedList as well! Could help with the class invariant too
+    }
 }
 
 
-@ghost
 object PastryNodeProps{
     import slProperties.*
 
@@ -197,7 +183,6 @@ object PastryNodeProps{
         buildDataNotInLeafsetData(start,dropped_node,replacement,to)        
     }.ensuring(
         start.remove_from_ls_and_replace(dropped_node,replacement,to).isValid
-        
     )   
 
 }
