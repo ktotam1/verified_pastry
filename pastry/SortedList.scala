@@ -1990,6 +1990,7 @@ object slProperties{
         assert(a.merge(b).merge(c) == a.merge(c.merge(b)))
     }.ensuring(a.merge(b).merge(c) == a.merge(c).merge(b))
 
+    @library
     def removeAllDistributivityOverUnionOne(l1: SortedList, e: Int, l2: SortedList): Unit = {
         require(l1.isValid)
         require(l2.isValid)
@@ -2033,9 +2034,17 @@ object slProperties{
                         assert(lhs == rhs2 && lhs == rhs)
                     }
                 } else if (x < e) {
+                    // val lhs = l1.merge(one).removeAll(l2)
+                    // hypot: xs.merge(one).removeAll(l2) == xs.removeAll(l2).merge(one.removeAll(l2))
                     assert(l1.merge(one) == Cons(x, xs.merge(one)))
                     assert(lhs == Cons(x, xs.merge(one)).removeAll(l2))
                     assert(lhs == xs.merge(one).merge(onex).removeAll(l2))
+
+                    if one.isSubsetOf(xs) then {
+
+                    } else {
+                    }
+
                     if (onex.isSubsetOf(l2)) {
                         if (one.isSubsetOf(l2)) {
                             assert(rhs2 == xs.removeAll(l2))
@@ -2060,7 +2069,7 @@ object slProperties{
         }
 
 
-              // (l1 U {e}) \ l2 == (l1 \ l2) U ({e} \ l2)
+        // (l1 U {e}) \ l2 == (l1 \ l2) U ({e} \ l2)
         // val one = Cons(e, Nil)
         // val lhs = l1.merge(one).removeAll(l2)
         // val rhs = l1.removeAll(l2).merge(one.removeAll(l2))
@@ -2078,7 +2087,6 @@ object slProperties{
         //     assert(lhs == l1.merge(one).removeAll(l2)) // (l1 U {e}) \ l2
         //     assert(lhs == rhs) //
         // }
-
 
     }.ensuring(l1.merge(Cons(e, Nil)).removeAll(l2) == l1.removeAll(l2).merge(Cons(e, Nil).removeAll(l2)))
 
@@ -2177,12 +2185,39 @@ object slProperties{
         }
     }.ensuring(subset.merge(superset) == superset)
     
-    @library
     def removeAllNotContainsHeadEqRemoveAllTail(l1: SortedList, l2:SortedList): Unit = {
         require(l1.isValid)
         require(l2.isValid)
         require(l2!=Nil)
         require(!l1.contains(l2.head))
+
+        (l1, l2) match {
+            case (Nil, _) => ()
+            case (Cons(x, xs), Cons(y, ys)) => {
+                assert(x != y)
+                assert(!xs.contains(y))
+                val lhs = l1.removeAll(l2)
+                if (x < l2.head) {
+                    assert(lhs == Cons(x, xs.removeAll(l2)))
+                    removeAllNotContainsHeadEqRemoveAllTail(xs, l2)
+                    assert(lhs == Cons(x, xs.removeAll(ys)))
+                    val rhs = l1.removeAll(ys)
+                    assert(rhs == Cons(x, xs).removeAll(ys))
+                    assert(l2.isSorted() && ys.isSorted())
+                    if (ys == Nil) {
+                    } else {
+                        assert(y < ys.head)
+                        assert(x < ys.head)
+                        assert(rhs == Cons(x, xs.removeAll(l2.tail)))
+                        assert(lhs == rhs)
+                    }
+                } else if (x > l2.head) {
+                    assert(lhs == l1.removeAll(l2.tail))
+                } else {
+                    assert(false)
+                }
+            }
+        }
     }.ensuring(l1.removeAll(l2) == l1.removeAll(l2.tail))
     // def zzzzzzremAllSubsetOfRem(l:SortedList,e:Int,l2:SortedList): Unit ={
     //     require(l.isValid)
