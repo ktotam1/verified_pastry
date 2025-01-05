@@ -11,7 +11,7 @@ import StainlessProperies.*
     @param l the maximum network-defined leafset size
     @param state the state of the node
     @param routingTable a sorted list of node (identified by their id)
-    @param leafset a set of nodes 
+    @param leafset a set of node ids corresponding to the nodes which are in our leafset 
     @param data the set of data keys this particular node holds that are "its own". 
                 Note that this could've been a Map (e.g.: Samuel Chassot's (Ordered)ListMap) if we wanted to prove some "robustness"/"synchronization" properties about the system.
                 However, since we are interested only in the system's partition-tolerance capabilities, we ignore the values and only keep track of the keys 
