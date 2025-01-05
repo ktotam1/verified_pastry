@@ -471,51 +471,6 @@ object slProperties{
     // =================================================
     // =================================================
 
-    // def isFirstImpliesContains(sl:SortedList,e:Int, k: BigInt): Unit = {
-    //     require(sl.isValid)
-    //     require(sl.size() > 0)
-    //     require(k>=0&& k<=sl.size())
-    //     require(sl.isFirstK(k,e))
-    //     sl match {
-    //         case Nil => assert(false)
-    //         case Cons(x,Nil) if (x!=e) => assert(false) 
-    //         case Cons(x,xs) if x==e =>{
-    //             assert(sl.contains(e))
-    //         } 
-    //         case Cons(x,xs) => {
-    //             assert(xs.size() > 0)
-    //             isFirstImpliesContains(xs,e,k-1)
-    //         }
-    //     }
-    // }.ensuring(sl.contains(e))
-
-    // def isLastImpliesContains(sl:SortedList,e:Int, k: BigInt): Unit = {
-    //     require(sl.isValid)
-    //     require(sl.size() > 0)
-    //     require(k>=0&& k<=sl.size())
-    //     require(sl.isLastK(k,e))
-    //     sl match {
-    //         case Nil => assert(false)
-    //         case Cons(x,Nil) if (x!=e) => assert(false) 
-    //         case Cons(x,xs) if x==e =>{
-    //             assert(sl.contains(e))
-    //         } 
-    //         case Cons(x,xs) => {
-    //             assert(xs.size() > 0)
-    //             isLastImpliesContains(xs,e,k)
-    //         }
-    //     }
-    // }.ensuring(sl.contains(e))
-
-    // def isFirstLastImpliesContains(sl:SortedList,e:Int, k: BigInt): Unit = {
-    //     require(sl.isValid)
-    //     require(sl.size() > 0 )
-    //     require(k>=0 && k<=sl.size())
-    //     require(sl.isFirstLastK(k,e))
-    //     assert(sl.isFirstK(k,e) || sl.isLastK(k,e))
-    //     if sl.isFirstK(k,e) then isFirstImpliesContains(sl,e,k) else isLastImpliesContains(sl,e,k)
-    // }.ensuring(sl.contains(e))
-
     def removeElementYouContainDecreasesSize(sl: SortedList,e:Int,l:BigInt): Unit = {
         require(sl.contains(e))
         require(sl.isValid)
@@ -893,6 +848,7 @@ object slProperties{
 
     def remImpliesSubset(l:SortedList, e: Int) : Unit = {
         require(l.isValid)
+        decreases(l.size())
         subsetReflexivity(l)
         l match{
             case Nil => {
@@ -1684,22 +1640,6 @@ object slProperties{
        l3.merge(l2).merge(l1) == l3.merge(l2.merge(l1))
     )
 
-    // def tailMergeSubOfParentMerge(l1:SortedList,l2: SortedList): Unit = {
-    //     require(l1.isValid)
-    //     require(l2.isValid)
-    //     require(l1!=Nil)
-    //     require(l2!=Nil)
-    //     //require(l1.tail.isSubsetOf(l1.tail.merge(l2.tail)))
-    //     tailSubsetOfSelf(l1)
-    //     assert(l1.tail.isSubsetOf(l1))
-    //     tailSubsetOfSelf(l2)
-    //     assert(l2.tail.isSubsetOf(l2))
-
-    //     assert(l1.tail.isSubsetOf(l1.merge(l2)))
-    //     assert(l2.tail.isSubsetOf(l1.merge(l2)))
-    //     mergeSubsetPreservation(l1.tail,l2.tail,l1.merge(l2))
-    // }.ensuring(l1.tail.merge(l2.tail).isSubsetOf(l1.merge(l2)))
-
     def tailMergeHeadIsList(l1:SortedList): Unit = {
         require(l1.isValid)
         require(l1!=Nil)
@@ -2392,64 +2332,4 @@ object slProperties{
         //     }
         // }
     }.ensuring(l1.containsOne(l2))
-
-
-
-    // @library
-    // def bothContImplContainsOne(l1:SortedList,l2:SortedList,e:Int): Unit={
-    //     require(l1.isValid)
-    //     require(l2.isValid)
-    //     require(l1.contains(e))
-    //     require(l2.contains(e))
-    //     // (l1,l2) match{
-    //     //     case(Nil,_) => assert(false)
-    //     //     case(_,Nil) => assert(false)
-    //     //     case(Cons(x,xs),Cons(y,ys))=>{
-    //     //         if(x==e && y == e) then {}
-    //     //         else if(x==e) then{
-    //     //             assert(y!=e)
-    //     //             containsAndHeadNotEqlImplTailContains(l2,e)
-    //     //             assert(ys.contains(e))
-    //     //             bothContImplContainsOne(l1,ys,e)
-    //     //         }else if(y==e) then{
-    //     //             assert(x!=e)
-    //     //             containsAndHeadNotEqlImplTailContains(l1,e)
-    //     //             assert(xs.contains(e))
-    //     //             bothContImplContainsOne(xs,l2,e)
-    //     //         }
-    //     //     }
-    //     // }
-    // }.ensuring(l1.containsOne(l2))
-
-    // @library
-    // def containsOneSymmetric(l1:SortedList,l2:SortedList): Unit={
-    //     require(l1.isValid)
-    //     require(l2.isValid)
-    //     require(l1.containsOne(l2))
-    //     decreases(l1.size()+l2.size())
-    //     // (l1,l2) match{
-    //     //     case(Nil,_) => assert(false)
-    //     //     case(_,Nil) => assert(false)
-    //     //     case(Cons(x,xs),Cons(y,ys))=>{
-    //     //         if x == y then {
-    //     //             assert(l1.contains(x))
-    //     //             assert(l2.contains(x))
-    //     //             bothContImplContainsOne(l1,l2,x)
-    //     //         }
-    //     //         else if l1.contains(y) then{
-    //     //             containsOneSymmetric(xs,l2)
-    //     //         }
-    //     //         else{
-    //     //             containsOneSymmetric(l1,ys)
-    //     //         }
-    //     //     }
-    //     // }
-    // }.ensuring(l2.containsOne(l1))
-
-    // @library
-    // def existContImplContOne(l1:SortedList,l2:SortedList): Unit={
-    //     require(l1.isValid)
-    //     require(l2.isValid)
-    //     require(l1.exists(k=>l2.contains(k)))
-    // }.ensuring(l1.containsOne(l2))
 }

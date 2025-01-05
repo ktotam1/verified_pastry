@@ -164,7 +164,7 @@ case class PastryNetwork(nodes: List[PastryNode],l: BigInt){
                             buildDataNotInLeafsetData(closestNode,m,replacementNode,true) 
                             val newNetwork = PastryNetwork((leftSafe:+updatedNode)++vulnNodes++rightSafe,l)
                             assert(newNetwork.all_keys() == all_keys())
-                            newNetwork.dropRecOnPotentiallyRemovedNodes(leftSafe,vulnNodes,rightSafe,ds)
+                            newNetwork.dropRecOnPotentiallyRemovedNodes(leftSafe:+updatedNode,ms,rightSafe,ds)
                         }
                         case (stainless.collection.Nil(),stainless.collection.Cons(y,ys)) =>{
                             // Symmetrical to above
@@ -177,8 +177,7 @@ case class PastryNetwork(nodes: List[PastryNode],l: BigInt){
                             buildDataNotInLeafsetData(closestNode,m,replacementNode,true) 
                             val newNetwork = PastryNetwork((leftSafe:+updatedNode)++vulnNodes++rightSafe,l)
                             assert(newNetwork.all_keys() == all_keys())
-                            newNetwork.dropRecOnPotentiallyRemovedNodes(leftSafe,vulnNodes,rightSafe,ds)
-                            //this
+                            newNetwork.dropRecOnPotentiallyRemovedNodes(leftSafe:+updatedNode,ms,ys,ds)
                         }
                         case (stainless.collection.Cons(x,xs),stainless.collection.Cons(y,ys)) =>{
                             val closestNode = x // arbitrarily selected between both
@@ -197,7 +196,7 @@ case class PastryNetwork(nodes: List[PastryNode],l: BigInt){
                             // Since the replacement node was a safe node, we can just put it back in the list, and continue iterating over all other nodes to drop
                             val newNetwork = PastryNetwork((leftSafe:+updatedNode)++vulnNodes++rightSafe,l)
                             assert(newNetwork.all_keys() == all_keys())
-                            newNetwork.dropRecOnPotentiallyRemovedNodes(leftSafe,vulnNodes,rightSafe,ds)
+                            newNetwork.dropRecOnPotentiallyRemovedNodes(leftSafe:+updatedNode,ms,rightSafe,ds)
                         }
                     }
                 }
@@ -509,36 +508,4 @@ object PastryNetworkProps{
         require(get_ids(a).removeAll(get_ids(b)) == get_ids(a))
         require(x.id<a.head.id)
     }.ensuring(get_ids(x::a).removeAll(get_ids(b)) == get_ids(x::a))
-
-    // }.ensuring(get_ids(l).take(k) == get_ids(l.take(k)))
-
-    // def innerFl(node:PastryNode,acc:SortedList): Unit = {
-    //     require(node.isValid)
-    //     require(acc.isValid)
-    // }.ensuring(acc.merge(node.own_data).isValid)
-
-    // def stainlessFlPreserversValidity(start: List[PastryNode],acc: SortedList): Unit = {
-    //     require(start.forall(node=>node.isValid))
-    //     require(acc.isValid)
-    //     start match {
-    //         case Nil() =>
-    //         case Cons(node, xs) => {
-    //             assert(acc.isValid)
-    //             assert(node.own_data.isValid)
-    //             innerFl(node,acc)
-    //             assert(acc.merge(node.own_data).isValid)
-    //             stainlessFlPreserversValidity(xs,acc.merge(node.own_data))
-    //         }
-    //     }
-    // }.ensuring(start.foldLeft(acc)((a,n) => a.merge(n.own_data)).isValid)
-
-
-    // def dropIsCorrectEasy(n: PastryNetwork, dropped_nodes: List[PastryNode]): Unit ={
-    //     require(n.is_synched()) 
-    //     require(dropped_nodes.forall(node => n.nodes.contains(node)))
-    //     require(dropped_nodes.size < n.l/2 ) // This is a stricter condition than the one we really need which woule be:
-    //     // require(n.nodes.forall(node=> (node.leafset & Set(dropped_nodes)).size() > (n.l/2) ))
-    //     decreases(dropped_nodes)
-
-    // }.ensuring(_ => n.drop(dropped_nodes).containsAll(n.all_keys().toList))
 }
