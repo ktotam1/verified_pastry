@@ -16,26 +16,6 @@ case class PastryNetwork(nodes: List[PastryNode],l: BigInt){
         && isSortedByNodeId(nodes)
         && eachNodeAccountableOwnData(nodes))
 
-    // def isValidHelper(l: List[PastryNode]): Unit = {
-    //     require(l.forall(n=>n.isValid))
-    //     l match{
-    //         case Nil() => 
-    //         case Cons(h, t) => {
-    //             assert(h.isValid)
-    //             assert(h.own_data.isValid)
-    //             isValidHelper(t)
-    //         } 
-    //     }
-    // }.ensuring(l.forall(n=>n.own_data.isValid))
-
-    // def iuwrtIsCallable(l: List[PastryNode]) : Unit = {
-    //     require(l.forall(n=>n.isValid))
-    //     isValidHelper(l)
-    // }.ensuring(isUniqueWRT(l,n=>n.own_data) || !isUniqueWRT(l,n=>n.own_data))
-
-    // def is_synched(): Boolean = {
-    //     true //nodes.forall(node => node.is_ready())
-    // }
 
     def size() : BigInt = nodes.size
 
