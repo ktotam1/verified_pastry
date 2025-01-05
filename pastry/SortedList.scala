@@ -138,58 +138,48 @@ sealed abstract class SortedList{
         }
     }.ensuring((sl:SortedList)=> sl.isValid && sl.size() <= this.size())
 
-    final def drop(i: Int): SortedList ={
+    final def drop(i: BigInt): SortedList ={
         require(isValid)
+        require(i>=0 && i<=size())
         this match 
             case Nil => Nil
-            case Cons(x, xs) => if i > 0 then xs.drop(i-1) else Cons(x, xs)
-    }.ensuring(_.isValid)
+            case Cons(x, xs) => if i > 0 then xs.drop(i-1) else this
+    }.ensuring((sl:SortedList)=> sl.isValid  &&  sl.size() == (size()-i) /*&& sl.isSubsetOf(this)*/)
 
-    final def take(i: Int): SortedList = {
+    final def take(i: BigInt): SortedList = {
         require(isValid)
+        require(i>=0 && i<=size())
         this match
             case Nil => Nil
             case Cons(x, xs) => if i > 0 then Cons(x, xs.take(i-1)) else Nil
-    }.ensuring(_.isValid)
+    }.ensuring((sl:SortedList)=> sl.isValid && sl.size() == i && sl.isSubsetOf(this))
+
+    final def takeLast(i: BigInt): SortedList = {
+        require(isValid)
+        require(i>=0 && i<=size())
+        drop(size()-i)
+    }.ensuring((sl:SortedList)=> sl.isValid && sl.size() == i /*&& sl.isSubsetOf(this)*/)
 
     final def isFirstK(k:BigInt, e:Int): Boolean = {
         require(isValid)
+        require(k>=0)
         if k == 0 then return false
-        this match {
-            case Nil => false
-            case Cons(x,xs) if (x == e) => true
-            case Cons(x,xs) if (x < e) => if k>0 then xs.isFirstK(k-1,e) else false
-            case Cons(x,xs) if (e < x) => false
-        }
+        else if k > size() then return contains(e)
+        else return take(k).contains(e)
+        // this match {
+        //     case Nil => false
+        //     case Cons(x,xs) if (x == e) => true
+        //     case Cons(x,xs) if (x < e) => if k>0 then xs.isFirstK(k-1,e) else false
+        //     case Cons(x,xs) if (e < x) => false
+        // }
     }
 
     final def isLastK(k:BigInt,e:Int) : Boolean = {
         require(isValid)
-        /* 
-            Since we want to preserve the ordering, we can't simply call `isFirstK` on a reverse-ordered list, since it wouldn't be sorted
-            We must therefore be slightly more careful in the implementation
-        */
-        def inner(lst: SortedList): Boolean = {
-            require(lst.isValid)
-            //decreases(lst.size())
-            if k == 0 then return false
-            lst match{
-                case Nil => false
-                case Cons(x,xs) if (x == e) => {
-                    assert(xs match{
-                        case Nil => true
-                        case _ => xs.head != e
-                    })
-                    return xs.size() < k 
-                }
-                case Cons(x,xs) if (x < e) => {
-                    assert(xs.size() < lst.size())
-                    inner(xs)
-                } 
-                case Cons(x,xs) if (e < x) => false
-            }
-        }
-        inner(this)
+        require(k>=0)
+        if k == 0 then return false
+        else if k > size() then return contains(e)
+        else return takeLast(k).contains(e)
     }
 
     final def isFirstLastK(k: BigInt, e: Int): Boolean = {
@@ -285,37 +275,18 @@ sealed abstract class SortedList{
         }
     }
 
-    @library
     final def intersect(other:SortedList): SortedList = {
         require(isValid)
         require(other.isValid)
-        decreases(size()+other.size())
-        (this,other) match{
-            case (Nil,_) => Nil
-            case (_,Nil) => Nil
-            case (Cons(x,xs), Cons(y,ys)) =>{
-                assert(xs.isValid)
-                assert(ys.isValid)
-                if x == y then Cons(x,xs.intersect(ys))
-                else if x<y then{
-                    //x will never be in `other`
-                    //therefore x not in interesect
-                    xs.intersect(other)
-                }
-                else{
-                    // x>y
-                    // y will never be in `this`
-                    this.intersect(ys)
-                }
-            }
-        }
+        this.removeAll(this.removeAll(other))
     }.ensuring((ret:SortedList) => ret.isValid)
 
-    final def subsetSize(other: SortedList): BigInt = {
+    final def intersectSize(other: SortedList): BigInt = {
         require(isValid)
         require(other.isValid)
         intersect(other).size()
     }
+
 }
 case object Nil extends SortedList
 case class Cons(x: Int, xs: SortedList) extends SortedList
@@ -366,6 +337,55 @@ object StainlessProperies{
         }
         innerIUWRT(vp.Nil,l)
     }
+
+    def all_lists_valid(l: List[SortedList]): Boolean = {
+        l match{
+            case stainless.collection.Nil[SortedList]() => true
+            case stainless.collection.Cons(x,xs) => x.isValid && all_lists_valid(xs)
+        }
+    }
+
+    def all_lists_validIMPLTailValid(l: List[SortedList]):Unit={
+        require(l!=stainless.collection.Nil[SortedList]())
+        require(all_lists_valid(l))
+    }.ensuring(all_lists_valid(l.tail))
+
+    def addPreservesAllListsValid(l: List[SortedList],x:SortedList):Unit = {
+        require(all_lists_valid(l))
+        require(x.isValid)
+    }.ensuring(all_lists_valid(x :: l))
+
+    def intersectionEmptyRecOne(l1: List[SortedList],compared_to: SortedList): Boolean = {  
+        require(all_lists_valid(l1))
+        require(compared_to.isValid)
+        l1 match{
+            case stainless.collection.Nil[SortedList]() => true
+            case stainless.collection.Cons[SortedList](x,xs) => {
+                all_lists_validIMPLTailValid(l1)
+                compared_to.intersect(x) == Nil && intersectionEmptyRecOne(xs,compared_to)
+            }
+        }   
+    }
+
+    def intersectionEmptyRec(left: List[SortedList],right: List[SortedList]): Boolean = {
+        require(all_lists_valid(left))
+        require(all_lists_valid(right))
+        right match{
+            case stainless.collection.Nil[SortedList]() => true
+            case stainless.collection.Cons[SortedList](x,xs) => {
+                addPreservesAllListsValid(left,x)
+                all_lists_validIMPLTailValid(right)
+                intersectionEmptyRecOne(left,x) && intersectionEmptyRecOne(xs,x) && intersectionEmptyRec(x :: left,xs)
+            }
+        }
+    }
+
+    def allIntersectionEmpty(l: List[SortedList]): Boolean = {
+        require(all_lists_valid(l))
+        intersectionEmptyRec(stainless.collection.Nil[SortedList](),l)
+    }
+
+    
 }
 
 @ghost
@@ -380,49 +400,105 @@ object slProperties{
         require(sl!=Nil)
     }.ensuring(sl.size()>0)
 
-    def isFirstImpliesContains(sl:SortedList,e:Int, k: BigInt): Unit = {
-        require(sl.isValid)
-        require(sl.size() > 0)
-        require(k>=0)
-        require(sl.isFirstK(k,e))
-        sl match {
-            case Nil => assert(false)
-            case Cons(x,Nil) if (x!=e) => assert(false) 
-            case Cons(x,xs) if x==e =>{
-                assert(sl.contains(e))
-            } 
-            case Cons(x,xs) => {
-                assert(xs.size() > 0)
-                isFirstImpliesContains(xs,e,k-1)
-            }
-        }
-    }.ensuring(sl.contains(e))
+    // def takePreservesContains(l:SortedList,e:Int, k: BigInt): Unit = {
+    //     require(l.isValid)
+    //     require(l.size() > 0)
+    //     require(k>=0&& k<=l.size())
+    //     require(l.take(k).contains(e))
+    // }.ensuring(l.contains(e))
 
-    def isLastImpliesContains(sl:SortedList,e:Int, k: BigInt): Unit = {
+    // def dropPreservesContains(l:SortedList,e:Int, k: BigInt): Unit = {
+    //     require(l.isValid)
+    //     require(l.size() > 0)
+    //     require(k>=0&& k<=l.size())
+    //     require(l.drop(k).contains(e))
+    //     assert(l.drop(k).isSubsetOf(l))
+    //     subContImplSupCont(l.drop(k),l,e)
+    // }.ensuring(l.contains(e))
+
+    // def takeLastPreservesContains(l:SortedList,e:Int, k: BigInt): Unit = {
+    //     require(l.isValid)
+    //     require(l.size() > 0)
+    //     require(k>=0&& k<=l.size())
+    //     require(l.takeLast(k).contains(e))
+    // }.ensuring(l.contains(e))
+
+
+    def isFirstImpliesFirstContains(sl:SortedList,e:Int, k: BigInt): Unit = {
         require(sl.isValid)
         require(sl.size() > 0)
-        require(k>=0)
+        require(k>=0&& k<=sl.size())
+        require(sl.isFirstK(k,e))
+    }.ensuring(sl.take(k).contains(e))
+
+    def isLastImpliesLastContains(sl:SortedList,e:Int, k: BigInt): Unit = {
+        require(sl.isValid)
+        require(sl.size() > 0)
+        require(k>=0&& k<=sl.size())
         require(sl.isLastK(k,e))
-        sl match {
-            case Nil => assert(false)
-            case Cons(x,Nil) if (x!=e) => assert(false) 
-            case Cons(x,xs) if x==e =>{
-                assert(sl.contains(e))
-            } 
-            case Cons(x,xs) => {
-                assert(xs.size() > 0)
-                isLastImpliesContains(xs,e,k)
-            }
-        }
-    }.ensuring(sl.contains(e))
-    def isFirstLastImpliesContains(sl:SortedList,e:Int, k: BigInt): Unit = {
+    }.ensuring(sl.takeLast(k).contains(e))
+
+    def isFirstLastImpliesFirstOrLastContains(sl:SortedList,e:Int, k: BigInt): Unit = {
         require(sl.isValid)
-        require(sl.size() > 0)
-        require(k>=0)
+        require(sl.size() > 0 )
+        require(k>=0 && k<=sl.size())
         require(sl.isFirstLastK(k,e))
         assert(sl.isFirstK(k,e) || sl.isLastK(k,e))
-        if sl.isFirstK(k,e) then isFirstImpliesContains(sl,e,k) else isLastImpliesContains(sl,e,k)
-    }.ensuring(sl.contains(e))
+        if sl.isFirstK(k,e) then isFirstImpliesFirstContains(sl,e,k) else isLastImpliesLastContains(sl,e,k)
+    }.ensuring(sl.take(k).contains(e) || sl.takeLast(k).contains(e))
+
+
+
+
+    // =================================================
+    // =================================================
+    // =================================================
+    // =================================================
+
+    // def isFirstImpliesContains(sl:SortedList,e:Int, k: BigInt): Unit = {
+    //     require(sl.isValid)
+    //     require(sl.size() > 0)
+    //     require(k>=0&& k<=sl.size())
+    //     require(sl.isFirstK(k,e))
+    //     sl match {
+    //         case Nil => assert(false)
+    //         case Cons(x,Nil) if (x!=e) => assert(false) 
+    //         case Cons(x,xs) if x==e =>{
+    //             assert(sl.contains(e))
+    //         } 
+    //         case Cons(x,xs) => {
+    //             assert(xs.size() > 0)
+    //             isFirstImpliesContains(xs,e,k-1)
+    //         }
+    //     }
+    // }.ensuring(sl.contains(e))
+
+    // def isLastImpliesContains(sl:SortedList,e:Int, k: BigInt): Unit = {
+    //     require(sl.isValid)
+    //     require(sl.size() > 0)
+    //     require(k>=0&& k<=sl.size())
+    //     require(sl.isLastK(k,e))
+    //     sl match {
+    //         case Nil => assert(false)
+    //         case Cons(x,Nil) if (x!=e) => assert(false) 
+    //         case Cons(x,xs) if x==e =>{
+    //             assert(sl.contains(e))
+    //         } 
+    //         case Cons(x,xs) => {
+    //             assert(xs.size() > 0)
+    //             isLastImpliesContains(xs,e,k)
+    //         }
+    //     }
+    // }.ensuring(sl.contains(e))
+
+    // def isFirstLastImpliesContains(sl:SortedList,e:Int, k: BigInt): Unit = {
+    //     require(sl.isValid)
+    //     require(sl.size() > 0 )
+    //     require(k>=0 && k<=sl.size())
+    //     require(sl.isFirstLastK(k,e))
+    //     assert(sl.isFirstK(k,e) || sl.isLastK(k,e))
+    //     if sl.isFirstK(k,e) then isFirstImpliesContains(sl,e,k) else isLastImpliesContains(sl,e,k)
+    // }.ensuring(sl.contains(e))
 
     def removeElementYouContainDecreasesSize(sl: SortedList,e:Int,l:BigInt): Unit = {
         require(sl.contains(e))
@@ -1854,10 +1930,11 @@ object slProperties{
     }.ensuring(l1.removeAll(l2.merge(l3)) == l1.removeAll(l2).removeAll(l3))
 
     @library
-    def removeAllRemoveAllIsRemoveAllMerge(l1:SortedList,l2:SortedList,l3:SortedList): Unit ={
+    def removeAllRemoveAllSubIsRemoveAllMerge(l1:SortedList,l2:SortedList,l3:SortedList): Unit ={
         require(l1.isValid)
         require(l2.isValid)
         require(l3.isValid)
+        require(l3.isSubsetOf(l1))
         
     }.ensuring(l1.removeAll(l2.removeAll(l3)) == l1.removeAll(l2).merge(l3))
 
@@ -1878,6 +1955,13 @@ object slProperties{
         
     }.ensuring(subset.merge(superset) == superset)
     
+    @library
+    def removeAllNotContainsHeadEqRemoveAllTail(l1: SortedList, l2:SortedList): Unit = {
+        require(l1.isValid)
+        require(l2.isValid)
+        require(l2!=Nil)
+        require(!l1.contains(l2.head))
+    }.ensuring(l1.removeAll(l2) == l1.removeAll(l2.tail))
     // def zzzzzzremAllSubsetOfRem(l:SortedList,e:Int,l2:SortedList): Unit ={
     //     require(l.isValid)
     //     require(l2.isValid)
@@ -2019,6 +2103,7 @@ object slProperties{
         require(l2.isValid)
         require(!l1.contains(e))
         require(!l2.contains(e))
+        decreases(l1.size() + l2.size())
         val mrgd = l1.merge(l2)
         (l1, l2) match {
             case (Nil, _) => {

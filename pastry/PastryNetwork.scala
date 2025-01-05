@@ -4,126 +4,45 @@ import stainless.lang.*
 import stainless.annotation.*
 import stainless.collection.*
 import StainlessProperies.*
-
-
-/**
-    A node in a Pastry Network
-    @param id the (unique) id of that node
-    @param l the maximum network-defined leafset size
-    @param state the state of the node
-    @param routingTable a sorted list of node (identified by their id)
-    @param leafset a set of nodes 
-    @param data the set of data keys this particular node holds that are "its own". 
-                Note that this could've been a Map (e.g.: Samuel Chassot's (Ordered)ListMap) if we wanted to prove some "robustness"/"synchronization" properties about the system.
-                However, since we are interested only in the system's partition-tolerance capabilities, we ignore the values and only keep track of the keys 
-    @param leafset_data the set of data keys that our node keeps track of for replication purposes on behalf of the nodes in its leafset
-*/
-case class PastryNode(id: Int, l: BigInt, routingTable: SortedList,leafset: SortedList, own_data: SortedList, leafset_data: SortedList){
-    /*
-        For some reason, stainless isn't really good at using Properties proven outside of a class 
-
-        Therefeore, instead of having class invariants, such as 
-        
-        ```
-        require((l/2 + l/2) == l) // assume L divisible by 2
-        require(leafset.size() == l) // the leafset is of size L (it is constructed such that the first L/2 elements are nodes ids of the L/2 left-closest nodes to ourselve, and the next L/2 elements -- of the right-closest)
-        require(leafset.isValid)
-        require(!own_data.exists(key=>leafset_data.contains(key))) // our data must not be in the leafset_data 
-        require(routingTable.isValid) // the routing table must be sorted by closest elements (defined as closest node id for this part of the exercise)
-        ```
-
-        which would've been a very elegant way to model this, I will rewrite this using an `isValid` function, and only properties
-    */
-    def isValid: Boolean = {
-        (l/2 + l/2) == l &&
-        leafset.size() == l && 
-        leafset.isValid &&
-        routingTable.isValid &&
-        own_data.isValid &&
-        leafset_data.isValid &&
-        own_data.removeAll(leafset_data) == own_data
-    }
-
-       
-    // ?? require(leafset.forall(node => routingTable.contains(node))) 
-
-
-    //def is_ready(): Boolean = state.is_ready() : Ignore state for now, it adds nothing
-
-
-    def remove_from_ls_and_replace(dropped_node: PastryNode,replacing_node:PastryNode,take_ownership:Boolean): PastryNode = {
-        require(isValid)
-        require(dropped_node.isValid)
-        require(replacing_node.isValid)
-        require(leafset.contains(dropped_node.id))
-        require(!leafset.contains(replacing_node.id))
-        require(dropped_node.id != id) // can't drop yourself
-        require(own_data.removeAll(replacing_node.own_data) == own_data) // our data doesn't contain the replacing node's data
-        
-        val new_ls = leafset.remove(dropped_node.id).insert(replacing_node.id)
-        val newrt = routingTable.merge(replacing_node.routingTable)
-        
-        val new_data = if !take_ownership then own_data else own_data.merge(dropped_node.own_data)
-        val new_leafset_data = if !take_ownership then leafset_data.merge(replacing_node.own_data) else leafset_data.merge(replacing_node.own_data).removeAll(dropped_node.own_data)
-
-        PastryNode(id,l,newrt,new_ls,new_data,new_leafset_data)
-    }//.ensuring((ret:PastryNode) => dropped_node.own_data.forall(k=>ret.own_data.contains(k)) && own_data.forall(k=>ret.own_data.contains(k)))
-      // Might have to rewrite a minimal example of  that poscondition to check whether it can actually be proven with List[Int]
-      // Otherwise can adapt own_data to become a SortedList as well! Could help with the class invariant too
-}
+import NetworkHelpers.*
+import scala.annotation.threadUnsafe
 
 case class PastryNetwork(nodes: List[PastryNode],l: BigInt){
-    def isValidHelper(l: List[PastryNode]): Unit = {
-        require(l.forall(n=>n.isValid))
-        l match{
-            case Nil() => 
-            case Cons(h, t) => {
-                assert(h.isValid)
-                assert(h.own_data.isValid)
-                isValidHelper(t)
-            } 
-        }
-    }.ensuring(l.forall(n=>n.own_data.isValid))
-
-    def iuwrtIsCallable(l: List[PastryNode]) : Unit = {
-        require(l.forall(n=>n.isValid))
-        isValidHelper(l)
-    }.ensuring(isUniqueWRT(l,n=>n.own_data) || !isUniqueWRT(l,n=>n.own_data))
-
-    
-    def isValid: Boolean = {
-        isvalidstainless(nodes,node=>node.id) // the nodes must be stored in an ordered set fashion
-        // We ignore "too small" networks, which don't even have l nodes
+    require(l>0
+        && (l/2 + l/2) == l
         && nodes.size >= l
-        && (l/2 + l/2) == l 
-        && nodes.forall(node=>node.isValid) // all the nodes must be valid
-        && 
-        {
-            iuwrtIsCallable(nodes)
-            isUniqueWRT(nodes,node=>node.own_data) // each node is accountable for its own data, each datum is accounted for by only one node (other nodes only have replicas)
-        }
-    }
+        && all_nodes_valid(nodes) // all the nodes must be valid
+        && isSortedByNodeId(nodes)
+        && eachNodeAccountableOwnData(nodes))
 
-    def node_ids(): SortedList = {
-        require(isValid)
-        fromStainlessSortedList(nodes,node=>node.id)
-    }.ensuring((res:SortedList)=>res.isValid)
+    // def isValidHelper(l: List[PastryNode]): Unit = {
+    //     require(l.forall(n=>n.isValid))
+    //     l match{
+    //         case Nil() => 
+    //         case Cons(h, t) => {
+    //             assert(h.isValid)
+    //             assert(h.own_data.isValid)
+    //             isValidHelper(t)
+    //         } 
+    //     }
+    // }.ensuring(l.forall(n=>n.own_data.isValid))
 
-    def is_synched(): Boolean = {
-        true //nodes.forall(node => node.is_ready())
-    }
+    // def iuwrtIsCallable(l: List[PastryNode]) : Unit = {
+    //     require(l.forall(n=>n.isValid))
+    //     isValidHelper(l)
+    // }.ensuring(isUniqueWRT(l,n=>n.own_data) || !isUniqueWRT(l,n=>n.own_data))
+
+    // def is_synched(): Boolean = {
+    //     true //nodes.forall(node => node.is_ready())
+    // }
 
     def size() : BigInt = nodes.size
-    
-    def is_empty(): Boolean = {
-        size() == 0
-    }
 
     def all_keys(): SortedList = {
-        require(isValid)
+        //require(isValid)
         def innerAKFL(acc:SortedList,rest:List[PastryNode]): SortedList = {
             require(acc.isValid)
-            require(rest.forall(n=>n.isValid))
+            require(all_nodes_valid(rest))
             rest match{
                 case Nil() => acc
                 case Cons(x, xs) => {
@@ -142,39 +61,161 @@ case class PastryNetwork(nodes: List[PastryNode],l: BigInt){
         elements.forall(e => contains(e))
     }
 
+    def all_nodes_in_network(l:List[PastryNode]): Boolean ={
+        // All the nodes we are dropping are nodes in the network        
+        //require(isValid)
+        l match{
+            case stainless.collection.Nil() => true
+            case stainless.collection.Cons(x,xs) => {
+                nodes.contains(x) && all_nodes_in_network(xs)
+            }
+        }
+    }
+
+    def isAmongstLimitNodes(node:PastryNode,threshold:BigInt): Boolean = {
+        require(threshold>=0 && threshold <= nodes.size)
+        get_ids(nodes).isFirstLastK(threshold,node.id)
+    }
+
+    // def notisAmongstImplNotFirst(node:PastryNode,threshold:BigInt): Unit` = {
+    //     require(threshold>=0)
+    //     require(!isAmongstLimitNodes(node,threshold))
+    // }.ensuring()
+
+    def allNotLimitNodes(nodes_to_drop: List[PastryNode]): Boolean = {
+        //require(isValid)
+        require(isSortedByNodeId(nodes_to_drop))
+        assert(l>=2)
+        
+        nodes_to_drop match{
+            case stainless.collection.Nil() => true
+            case stainless.collection.Cons(x,xs) => {
+                !isAmongstLimitNodes(x,l/2-1) && allNotLimitNodes(xs)
+            }
+        }
+        // In the properties, we prove that this ensures:
+        // get_ids(network.nodes).take(network.l/2-1).removeAll(get_ids(nodes_to_drop)) == get_ids(network.nodes).take(network.l/2-1) && 
+        // get_ids(network.nodes).takeLast(network.l/2-1).removeAll(get_ids(nodes_to_drop)) == get_ids(network.nodes).takeLast(network.l/2-1)
+        // aka the nodes removed are not part of the limit
+    }
+
+    def drop(nodes_to_drop: List[PastryNode]): PastryNetwork = {
+        //require(isValid)
+        require(isSortedByNodeId(nodes_to_drop))
+        require(all_nodes_valid(nodes_to_drop))
+        require(all_nodes_in_network(nodes_to_drop))
+        // Because we don't have a circular list, we want to ensure that 
+        //all the nodes we are dropping are not "on the border", otherwise we wouldn't have replacement nodes to select from the leafset
+        require(allNotLimitNodes(nodes_to_drop)) 
+        // require(nodes.forall(node => {
+        //     assert(node.isValid)
+        //     node.leafset.intersectSize(get_ids(nodes_to_drop)) < l/2
+        // }))
+        this
+        // TODO Implement drop
+    }.ensuring((dropped:PastryNetwork) => all_keys() == dropped.all_keys())
+    //def join(node: PastryNode): PastryNetwork
+}
+
+object NetworkHelpers{
+    def all_nodes_validIMPLall_ownDataValid(l: List[PastryNode]): Unit = {
+        require(all_nodes_valid(l))
+        l match{
+            case stainless.collection.Nil[PastryNode]() => {}
+            case stainless.collection.Cons(x,xs) => {
+                assert(x.isValid)
+                assert(x.own_data.isValid)
+                all_nodes_validIMPLall_ownDataValid(xs)
+            }
+        }
+    }.ensuring(all_lists_valid(l.map(n=>n.own_data)))
+
+    def eachNodeAccountableOwnData(l: List[PastryNode]): Boolean = {
+        // each node is accountable for its own data, each datum is accounted for by only one node (other nodes only have potential replicas only, tho this isn't verified here)
+        require(all_nodes_valid(l))
+        all_nodes_validIMPLall_ownDataValid(l)
+        allIntersectionEmpty(l.map(n=>n.own_data))
+    }
+
+    def all_nodes_valid(l: List[PastryNode]): Boolean = {
+       l match{
+            case stainless.collection.Nil[PastryNode]() => true
+            case stainless.collection.Cons(x,xs) => {x.isValid && all_nodes_valid(xs)}
+        }
+    }
+
+    def isSortedByNodeId(l:List[PastryNode]): Boolean = {
+        // the nodes must be stored by their ids
+        // equivalent to isvalidstainless(nodes,node=>node.id), but we eventually
+        // decided to not use it because of the predicate name substitution issue 
+        l match {
+            case stainless.collection.Nil[PastryNode]() => true
+            case stainless.collection.Cons(x,stainless.collection.Nil[PastryNode]()) => {
+                true
+            }
+            case stainless.collection.Cons(x,xs) =>{
+                (x.id < xs.head.id) && isSortedByNodeId(xs)
+            }
+        }
+    }
+
     def get_ids(node_list:List[PastryNode]): SortedList={        
-        require(isvalidstainless(node_list,node=>node.id))
+        require(isSortedByNodeId(node_list))
         node_list match{
             case stainless.collection.Nil() => vp.Nil
             case stainless.collection.Cons(x,xs) => {vp.Cons(x.id,get_ids(xs))}
         }
-    }
-
-    def drop(nodes_to_drop: List[PastryNode]): PastryNetwork = {
-        require(isValid)
-        require(nodes_to_drop.forall(node => nodes.contains(node))) // All the nodes we are dropping are nodes in the network        
-        require(isvalidstainless(nodes_to_drop,node=>node.id))
-        require(nodes_to_drop.forall(dropped_node => !node_ids().isFirstLastK(l/2,dropped_node.id)))
-        require(nodes.forall(node => {
-            assert(node.isValid)
-            node.leafset.subsetSize(get_ids(nodes_to_drop)) < l/2
-        }))
-        assert(nodes.forall(node=>node.isValid))
-        assert(nodes.forall(node=>{
-            assert(node.isValid)
-            true
-        }))
-        this
-        // TODO Implement drop
-    }.ensuring((dropped:PastryNetwork) => dropped.isValid && all_keys() == dropped.all_keys())
-    //def join(node: PastryNode): PastryNetwork
+    }.ensuring(ret => ret.isValid && ret.size() == node_list.size)
 }
 
 // --------------------- Proofs -----------------------------------
 
 @ghost
-object PastryProps{
+object PastryNetworkProps{
     import slProperties.*
+
+    def isAmongstLimitNodesImplFirstOrLastContains(network:PastryNetwork,node:PastryNode,threshold:BigInt): Unit = {
+        require(threshold>=0 && threshold <= network.nodes.size)
+        require(network.isAmongstLimitNodes(node,threshold))
+    }.ensuring(get_ids(network.nodes).take(threshold).contains(node.id) || get_ids(network.nodes).takeLast(threshold).contains(node.id))
+
+    def nisAmongstLimitNodesImplFirstOrLastContains(network:PastryNetwork,node:PastryNode,threshold:BigInt): Unit = {
+        require(threshold>=0 && threshold <= network.nodes.size)
+        require(!network.isAmongstLimitNodes(node,threshold))
+    }.ensuring(!get_ids(network.nodes).take(threshold).contains(node.id) && !get_ids(network.nodes).takeLast(threshold).contains(node.id))
+
+
+    def allNotLimitNodesEnsuresRemoveAllPreservation(network:PastryNetwork,nodes_to_drop: List[PastryNode]): Unit = {
+        //require(isValid)
+        require(isSortedByNodeId(nodes_to_drop))
+        require(network.allNotLimitNodes(nodes_to_drop))
+        val ids_1 = get_ids(network.nodes).take(network.l/2-1)
+        val ids_2 = get_ids(network.nodes).takeLast(network.l/2-1)
+        val removed_ids = get_ids(nodes_to_drop)
+        val removed_1 = ids_1.removeAll(removed_ids)
+        val removed_2 = ids_2.removeAll(removed_ids)
+        if ids_1 == vp.Nil then removeAllNilIsNil(removed_ids)
+        if ids_2 == vp.Nil then removeAllNilIsNil(removed_ids)
+        else{
+            nodes_to_drop match{
+                case Nil() =>{
+                    assert(removed_1 == ids_1)
+                    assert(removed_2 == ids_2)
+                }
+                case Cons(x,xs) =>{
+                    assert(!network.isAmongstLimitNodes(x,network.l/2-1))
+                    nisAmongstLimitNodesImplFirstOrLastContains(network,x,network.l/2-1)
+                    removeAllNotContainsHeadEqRemoveAllTail(ids_1,removed_ids)
+                    removeAllNotContainsHeadEqRemoveAllTail(ids_2,removed_ids)
+                    allNotLimitNodesEnsuresRemoveAllPreservation(network,xs)
+                }
+            }
+        }
+    }.ensuring(
+        get_ids(network.nodes).take(network.l/2-1).removeAll(get_ids(nodes_to_drop)) == get_ids(network.nodes).take(network.l/2-1) && 
+        get_ids(network.nodes).takeLast(network.l/2-1).removeAll(get_ids(nodes_to_drop)) == get_ids(network.nodes).takeLast(network.l/2-1)
+    )
+
 
     // def innerFl(node:PastryNode,acc:SortedList): Unit = {
     //     require(node.isValid)
@@ -196,110 +237,6 @@ object PastryProps{
     //     }
     // }.ensuring(start.foldLeft(acc)((a,n) => a.merge(n.own_data)).isValid)
 
-    def nodeBuiltFromRemoveHasCorrectLS(start:PastryNode,dropped_node:PastryNode,replacement:PastryNode) : Unit ={
-        require(start.isValid)
-        require(dropped_node.isValid)
-        require(replacement.isValid)
-        require(start.leafset.contains(dropped_node.id))
-        require(!start.leafset.contains(replacement.id))
-        require(dropped_node.id != start.id) // can't drop yourself
-        removeElementYouContainDecreasesSize(start.leafset,dropped_node.id,start.l)
-        ncImplremoveNc(start.leafset,replacement.id,dropped_node.id)
-        insertNewElementIncreasesSize(start.leafset.remove(dropped_node.id),replacement.id,start.l-1)
-    }.ensuring(start.leafset.remove(dropped_node.id).insert(replacement.id).size() == (start.l))
-
-    def startDataisSubsetOfnbfrData(start:PastryNode,dropped_node:PastryNode,replacement:PastryNode,to: Boolean): Unit={
-        require(start.isValid)
-        require(dropped_node.isValid)
-        require(replacement.isValid)
-        require(start.leafset.contains(dropped_node.id))
-        require(!start.leafset.contains(replacement.id))
-        require(dropped_node.id != start.id) // can't drop yourself
-        require(start.own_data.removeAll(replacement.own_data) == start.own_data) // our data doesn't contain the replacing node's data
-        
-        val built = start.remove_from_ls_and_replace(dropped_node,replacement,to)
-        if !to then{
-            assert(built.own_data == start.own_data)
-            subsetReflexivity(start.own_data)
-        }
-        else{
-            assert(built.own_data == start.own_data.merge(dropped_node.own_data))
-            alwaysSubsetOfMerged(start.own_data,dropped_node.own_data)
-        }
-    }.ensuring(start.own_data.isSubsetOf(start.remove_from_ls_and_replace(dropped_node,replacement,to).own_data))
-
-    def buildDataNotInLeafsetData(start:PastryNode,dropped_node:PastryNode,replacement:PastryNode,to: Boolean): Unit = {
-        require(start.isValid)
-        require(dropped_node.isValid)
-        require(replacement.isValid)
-        require(start.leafset.contains(dropped_node.id))
-        require(!start.leafset.contains(replacement.id))
-        require(dropped_node.id != start.id) // can't drop yourself
-        require(start.own_data.removeAll(replacement.own_data) == start.own_data) // our data doesn't contain the replacing node's data
-        val built = start.remove_from_ls_and_replace(dropped_node,replacement,to)
-        assert(start.own_data.removeAll(start.leafset_data) == start.own_data) // From isValid
-        if !to then{
-            assert(built.own_data == start.own_data)
-            assert(built.leafset_data == start.leafset_data.merge(replacement.own_data))
-            assert(start.own_data.removeAll(replacement.own_data) == start.own_data) // from require
-            removeAllMergeISRemoveAllRemoveAll(start.own_data,start.leafset_data,replacement.own_data)
-            assert(start.own_data.removeAll(start.leafset_data.merge(replacement.own_data)) == start.own_data) // Must reach this
-            assert(built.own_data.removeAll(built.leafset_data) == built.own_data) // Must reach this
-        }
-        else{
-            assert(built.own_data == start.own_data.merge(dropped_node.own_data))
-            assert(built.leafset_data == start.leafset_data.merge(replacement.own_data).removeAll(dropped_node.own_data))
-            assert(start.own_data.removeAll(replacement.own_data) == start.own_data)// from require
-            
-            removeAllRemoveAllIsRemoveAllMerge(start.own_data.merge(dropped_node.own_data),start.leafset_data.merge(replacement.own_data),dropped_node.own_data)
-            assert(start.own_data.merge(dropped_node.own_data)
-                    .removeAll(start.leafset_data.merge(replacement.own_data).removeAll(dropped_node.own_data)) 
-                    == start.own_data.merge(dropped_node.own_data)
-                    .removeAll(start.leafset_data.merge(replacement.own_data))
-                    .merge(dropped_node.own_data))
-
-            mergeRemoveAllisRemoveAllMerge(start.own_data,dropped_node.own_data,start.leafset_data.merge(replacement.own_data))
-            mergeDistributivityOne(start.own_data.removeAll(start.leafset_data.merge(replacement.own_data)),dropped_node.own_data.removeAll(start.leafset_data.merge(replacement.own_data)),dropped_node.own_data)
-            
-            
-            removeAllRemoveAllIsRemoveAllMerge(dropped_node.own_data,start.leafset_data.merge(replacement.own_data),dropped_node.own_data)
-            subsetReflexivity(dropped_node.own_data)
-            removeAllImpliesSubset(dropped_node.own_data,start.leafset_data.merge(replacement.own_data))
-            subsetMergeSupersetEqSuperset(dropped_node.own_data.removeAll(start.leafset_data.merge(replacement.own_data)),dropped_node.own_data)
-
-            assert(start.own_data.removeAll(start.leafset_data) == start.own_data) // From isValid, see above
-            assert(start.own_data.removeAll(replacement.own_data) == start.own_data)// from require, see above
-            removeAllMergeISRemoveAllRemoveAll(start.own_data,start.leafset_data,replacement.own_data)
-
-            assert(start.own_data.merge(dropped_node.own_data)
-            .removeAll(start.leafset_data.merge(replacement.own_data).removeAll(dropped_node.own_data))
-             == start.own_data.merge(dropped_node.own_data)) // Must reach this
-
-            assert(built.own_data.removeAll(built.leafset_data) == built.own_data) // Must reach this
-        }
-    }.ensuring(start.remove_from_ls_and_replace(dropped_node,replacement,to).own_data.removeAll(start.remove_from_ls_and_replace(dropped_node,replacement,to).leafset_data) == start.remove_from_ls_and_replace(dropped_node,replacement,to).own_data)
-
-    def nodeBuiltFromRemoveIsValid(start:PastryNode,dropped_node:PastryNode,replacement:PastryNode,to: Boolean): Unit = {
-        require(start.isValid)
-        require(dropped_node.isValid)
-        require(replacement.isValid)
-        require(start.leafset.contains(dropped_node.id))
-        require(!start.leafset.contains(replacement.id))
-        require(dropped_node.id != start.id) // can't drop yourself
-        require(start.own_data.removeAll(replacement.own_data) == start.own_data) // our data doesn't contain the replacing node's data
-        
-        
-        nodeBuiltFromRemoveHasCorrectLS(start,dropped_node,replacement)
-
-        val built = start.remove_from_ls_and_replace(dropped_node,replacement,to)
-
-        assert(built.leafset.size() == start.l)
-        assert(built.leafset.isValid)
-        assert(built.routingTable.isValid)
-        startDataisSubsetOfnbfrData(start,dropped_node,replacement,to)
-        assert(start.own_data.isSubsetOf(built.own_data))
-        buildDataNotInLeafsetData(start,dropped_node,replacement,to)        
-    }.ensuring(start.remove_from_ls_and_replace(dropped_node,replacement,to).isValid)
 
     // def dropIsCorrectEasy(n: PastryNetwork, dropped_nodes: List[PastryNode]): Unit ={
     //     require(n.is_synched()) 
